@@ -56,6 +56,23 @@ async function uploadTwoObjects(page: Page): Promise<void> {
   await page.waitForTimeout(1500);
 }
 
+async function uploadFiveObjects(page: Page): Promise<void> {
+  await page.goto("/");
+  await expect(page.locator('[data-slot="toolcraft-runtime-app"]')).toBeVisible();
+  const colors: Array<[number, number, number]> = [
+    [200, 40, 40],
+    [40, 80, 220],
+    [50, 170, 90],
+    [210, 160, 30],
+    [140, 60, 190],
+  ];
+  for (const [index, color] of colors.entries()) {
+    await uploadImage(page, `image-${index + 1}.png`, color);
+    await page.waitForTimeout(400);
+  }
+  await page.waitForTimeout(1200);
+}
+
 test.describe("multi-object canvas", () => {
   test("browser: layers panel selects objects", async ({ page }) => {
     await uploadTwoObjects(page);
@@ -114,6 +131,22 @@ test.describe("multi-object canvas", () => {
     await page.getByRole("button", { name: /bring to front/i }).click();
     await page.getByRole("button", { name: /send to back/i }).click();
   });
+
+  test("browser: canvas accepts up to five image objects", async ({ page }) => {
+    await uploadFiveObjects(page);
+    await expect(page.locator("[data-object-hit]")).toHaveCount(5);
+  });
+
+  test("browser: image upload disables at five objects and Layers explains the limit", async ({ page }) => {
+    await uploadFiveObjects(page);
+    await expect(page.locator(fileInput)).toBeDisabled();
+    const layersHeader = page.locator('[data-toolcraft-layers-panel] [data-slot="layers-panel-header"]');
+    await expect(layersHeader).toHaveAttribute(
+      "title",
+      "You can add up to 5 images. Remove an image layer to upload another.",
+    );
+    await expect(layersHeader).toHaveAttribute("data-image-upload-limit-reached", "");
+  });
 });
 
 test("browser perf: Object arrange actions stay responsive", async ({ page }) => {
@@ -122,8 +155,8 @@ test("browser perf: Object arrange actions stay responsive", async ({ page }) =>
 
 test("browser perf: object composite scene stays under budget", async ({ page }) => {
   expect(appPerformance.scenarios.map((scenario) => scenario.id)).toContain("ascii-object-composite");
-  await uploadTwoObjects(page);
-  await expect(page.locator("[data-object-hit]")).toHaveCount(2);
+  await uploadFiveObjects(page);
+  await expect(page.locator("[data-object-hit]")).toHaveCount(5);
 });
 
 test("browser perf: layer interactions keep viewport stable", async ({ page }) => {

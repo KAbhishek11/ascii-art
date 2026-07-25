@@ -3,10 +3,10 @@ import { defineToolcraft } from "@/toolcraft/runtime";
 export const starterControlSectionInventory = [
   {
     title: "Source",
-    entity: "Uploaded image or video",
+    entity: "Uploaded image",
     targets: ["source.image"],
     groupingReason:
-      "The single Source uploader accepts an image or a video as the source material for the ASCII conversion and owns upload, clear, and reset behavior; the renderer converts whichever media type is uploaded.",
+      "The Source uploader accepts an image as the source material for the ASCII conversion and owns upload, clear, and reset behavior.",
   },
   {
     title: "Object",
@@ -44,13 +44,6 @@ export const starterControlSectionInventory = [
     groupingReason:
       "The export format and resolution controls tune the still image delivered by the sticky export action.",
   },
-  {
-    title: "Video Export",
-    workflowStage: "Output delivery",
-    targets: ["export.video.format", "export.video.resolution"],
-    groupingReason:
-      "The video format and resolution controls tune the ASCII video delivered by the sticky Export Video action when a video source is uploaded.",
-  },
 ] as const;
 
 export const appSchema = defineToolcraft({
@@ -68,25 +61,19 @@ export const appSchema = defineToolcraft({
   },
   panels: {
     layers: true,
-    timeline: {
-      defaultDurationSeconds: 5,
-      enabled: true,
-      mode: "playback",
-    },
     controls: {
       sections: [
         {
           title: "Source",
           controls: {
             sourceImage: {
-              accept: "image/*,video/*",
+              accept: "image/*",
               assetKind: "file",
               defaultValue: [],
-              description:
-                "Upload an image or a video. Videos convert every frame to ASCII, enable Export Video, and set the timeline length to the clip duration.",
-              label: "Image or video",
+              description: "Upload an image to convert it into ASCII art.",
+              label: "Image",
               performanceReason:
-                "Large image or video uploads drive decode and ASCII sampling for preview and export.",
+                "Large image uploads drive decode and ASCII sampling for preview and export.",
               performanceRole: "workload",
               target: "source.image",
               type: "fileDrop",
@@ -287,57 +274,10 @@ export const appSchema = defineToolcraft({
           ],
         },
         {
-          title: "Video Export",
-          controls: {
-            videoFormat: {
-              defaultValue: "mp4",
-              description:
-                "WebM records without extra dependencies; selecting MP4 safely falls back to WebM when the browser cannot encode MP4.",
-              label: "Format",
-              options: [
-                { label: "MP4", value: "mp4" },
-                { label: "WebM", value: "webm" },
-              ],
-              orderRole: "mode",
-              performanceReason:
-                "Video format selects the encoded container for the exported ASCII video.",
-              performanceRole: "responsiveness",
-              target: "export.video.format",
-              type: "select",
-            },
-            videoResolution: {
-              defaultValue: "current",
-              label: "Resolution",
-              options: [
-                { label: "Current", value: "current" },
-                { label: "4K", value: "4k" },
-              ],
-              orderRole: "detail",
-              performanceReason:
-                "Video resolution controls the encoded video pixel dimensions and per-frame render cost.",
-              performanceRole: "workload",
-              target: "export.video.resolution",
-              type: "select",
-            },
-          },
-          layoutGroups: [
-            {
-              columns: 2,
-              controls: ["videoFormat", "videoResolution"],
-              layout: "inline",
-            },
-          ],
-        },
-        {
           title: "Export",
           controls: {
             outputActions: {
               actions: [
-                {
-                  icon: "upload-simple",
-                  label: "Export Video",
-                  value: "export-video",
-                },
                 {
                   icon: "upload-simple",
                   label: "Export PNG",

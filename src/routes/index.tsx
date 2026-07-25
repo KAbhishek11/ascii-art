@@ -5,7 +5,6 @@ import { Toaster } from "sonner";
 import {
   AsciiImageRenderer,
   exportAsciiImage,
-  exportAsciiVideo,
 } from "../app/ascii-renderer";
 import { appSchema } from "../app/app-schema";
 import {
@@ -66,13 +65,6 @@ const handlePanelAction: ToolcraftPanelActionHandler = async ({
     const layers =
       action.value === "object-front" ? [...remaining, moved] : [moved, ...remaining];
     dispatch({ layers, selectedLayerId: srcId, type: "layers.reorder" });
-    return;
-  }
-
-  if (action.value === "export-video") {
-    reportProgress(0.02);
-    await exportAsciiVideo(state, reportProgress);
-    reportProgress(1);
     return;
   }
 

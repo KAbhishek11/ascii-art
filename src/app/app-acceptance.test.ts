@@ -3158,22 +3158,12 @@ describe("Toolcraft template app acceptance coverage", () => {
       "appearance.background",
       "export.image.format",
       "export.image.resolution",
-      "export.video.format",
-      "export.video.resolution",
     ]);
   });
 
   it("defaults generated apps to new Toolcraft assembly mode", () => {
     expect(appTransferMode).toEqual({
-      animationIntent: {
-        loopDuration: {
-          evidence:
-            "The timeline duration is set to the uploaded video's duration on loadedmetadata via timeline.setDuration; 5s is the default until a video loads.",
-          seconds: 5,
-          source: "product-derived",
-        },
-        mode: "timeline-playback",
-      },
+      animationIntent: { mode: "none" },
       mode: "new-toolcraft-app",
     });
   });
