@@ -2,8 +2,6 @@ import * as React from "react";
 
 import {
   createToolcraftPngExportCanvas,
-  getToolcraftVideoExportSize,
-  shouldIncludeToolcraftExportBackground,
   shouldIncludeToolcraftPreviewBackground,
   type ToolcraftState,
 } from "@/toolcraft/runtime";
@@ -32,11 +30,13 @@ const glyphSets: Record<string, string> = {
   fine: " .'`^\",:;Il!i~+_-?][}{1)(|\\/*tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",
 };
 
+// Canvas monospace glyphs are narrower than their font height. Sampling square
+// cells loses horizontal detail and makes the resulting art look stretched.
+const MONOSPACE_GLYPH_ASPECT = 0.62;
+
 type Rgb = { b: number; g: number; r: number };
 
-// Any drawable ASCII source: a decoded still image, a live video element, or a
-// captured still-frame canvas (used for non-active video objects).
-type AsciiRenderSource = HTMLImageElement | HTMLVideoElement | HTMLCanvasElement;
+type AsciiRenderSource = HTMLImageElement;
 
 type ObjectAsciiSettings = {
   brightness: number;
@@ -93,40 +93,12 @@ function getGlobalBackground(state: ToolcraftState): {
   };
 }
 
-function isVideoRenderSource(source: AsciiRenderSource): source is HTMLVideoElement {
-  return typeof HTMLVideoElement !== "undefined" && source instanceof HTMLVideoElement;
-}
-
 function getSourceIntrinsicSize(source: AsciiRenderSource): { height: number; width: number } {
-  if (isVideoRenderSource(source)) {
-    return { height: source.videoHeight, width: source.videoWidth };
-  }
-  if (typeof HTMLCanvasElement !== "undefined" && source instanceof HTMLCanvasElement) {
-    return { height: source.height, width: source.width };
-  }
-  const image = source as HTMLImageElement;
-  return { height: image.naturalHeight, width: image.naturalWidth };
-}
-
-function isVideoAsset(asset: { mimeType?: string } | undefined): boolean {
-  return Boolean(asset && (asset.mimeType ?? "").startsWith("video/"));
+  return { height: source.naturalHeight, width: source.naturalWidth };
 }
 
 function getLayerAsset(state: ToolcraftState, layerId: string) {
   return state.mediaAssets.find((asset) => asset.layerId === layerId);
-}
-
-// The single video object allowed to play live: the selected video if any, else
-// the most-recently-added video object. All other video objects show a still.
-function getActiveVideoLayerId(state: ToolcraftState): string | null {
-  const videoLayers = getVisibleObjectLayers(state).filter((layer) =>
-    isVideoAsset(getLayerAsset(state, layer.id)),
-  );
-  if (videoLayers.length === 0) {
-    return null;
-  }
-  const selected = videoLayers.find((layer) => layer.id === state.selectedLayerId);
-  return (selected ?? videoLayers[videoLayers.length - 1]).id;
 }
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement> {
@@ -138,48 +110,6 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-function loadVideoElement(dataUrl: string): Promise<HTMLVideoElement> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement("video");
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "auto";
-    video.crossOrigin = "anonymous";
-    video.addEventListener("loadeddata", () => resolve(video), { once: true });
-    video.addEventListener(
-      "error",
-      () => reject(new Error("Could not load the source video.")),
-      { once: true },
-    );
-    video.src = dataUrl;
-  });
-}
-
-function seekVideoElement(video: HTMLVideoElement, timeSeconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    const maxTime = Math.max(0, (video.duration || 0) - 0.001);
-    const target = Math.min(Math.max(0, timeSeconds), maxTime);
-    const cleanup = (): void => {
-      window.clearTimeout(timer);
-      video.removeEventListener("seeked", onSeeked);
-    };
-    const onSeeked = (): void => {
-      cleanup();
-      resolve();
-    };
-    const timer = window.setTimeout(() => {
-      cleanup();
-      resolve();
-    }, 3000);
-    if (Math.abs(video.currentTime - target) < 0.001) {
-      cleanup();
-      resolve();
-      return;
-    }
-    video.addEventListener("seeked", onSeeked, { once: true });
-    video.currentTime = target;
-  });
-}
 
 function getCoverDrawRect(
   imageWidth: number,
@@ -212,6 +142,41 @@ function drawCoverSource(
   }
   const rect = getCoverDrawRect(intrinsic.width, intrinsic.height, width, height);
   context.drawImage(source, rect.x, rect.y, rect.width, rect.height);
+}
+
+function drawCoverSourceIntoGrid(
+  context: CanvasRenderingContext2D,
+  source: AsciiRenderSource,
+  outputWidth: number,
+  outputHeight: number,
+  columns: number,
+  rows: number,
+): void {
+  const intrinsic = getSourceIntrinsicSize(source);
+  if (intrinsic.width <= 0 || intrinsic.height <= 0 || outputWidth <= 0 || outputHeight <= 0) {
+    return;
+  }
+  const rect = getCoverDrawRect(intrinsic.width, intrinsic.height, outputWidth, outputHeight);
+  context.drawImage(
+    source,
+    (rect.x / outputWidth) * columns,
+    (rect.y / outputHeight) * rows,
+    (rect.width / outputWidth) * columns,
+    (rect.height / outputHeight) * rows,
+  );
+}
+
+export function getAsciiGrid(width: number, height: number, cellSize: number) {
+  const cellHeight = Math.max(1, cellSize);
+  const fontSize = Math.max(1, Math.round(cellHeight * 1.08));
+  const cellWidth = fontSize * MONOSPACE_GLYPH_ASPECT;
+  return {
+    cellHeight,
+    cellWidth,
+    columns: Math.max(1, Math.ceil(width / cellWidth)),
+    fontSize,
+    rows: Math.max(1, Math.ceil(height / cellHeight)),
+  };
 }
 
 function mapToneToGlyph(tone: number, settings: ObjectAsciiSettings): string {
@@ -350,6 +315,8 @@ function sampleCellsWithCanvas2d(
   source: AsciiRenderSource,
   columns: number,
   rows: number,
+  outputWidth: number,
+  outputHeight: number,
 ): Uint8Array {
   const canvas = document.createElement("canvas");
   canvas.width = columns;
@@ -358,21 +325,34 @@ function sampleCellsWithCanvas2d(
   if (!context) {
     return new Uint8Array(columns * rows * 4);
   }
-  drawCoverSource(context, source, columns, rows);
+  drawCoverSourceIntoGrid(context, source, outputWidth, outputHeight, columns, rows);
   const readImageData = Reflect.get(context, "getImageData") as CanvasRenderingContext2D["getImageData"];
   return new Uint8Array(readImageData.call(context, 0, 0, columns, rows).data);
 }
 
-function sampleCells(source: AsciiRenderSource, columns: number, rows: number): Uint8Array {
+function sampleCells(
+  source: AsciiRenderSource,
+  columns: number,
+  rows: number,
+  outputWidth: number,
+  outputHeight: number,
+): Uint8Array {
   const sampler = getWebGlSampler();
   if (!sampler) {
-    return sampleCellsWithCanvas2d(source, columns, rows);
+    return sampleCellsWithCanvas2d(source, columns, rows, outputWidth, outputHeight);
   }
   const { gl, glCanvas } = sampler;
   sampler.source.width = columns;
   sampler.source.height = rows;
   sampler.sourceContext.clearRect(0, 0, columns, rows);
-  drawCoverSource(sampler.sourceContext, source, columns, rows);
+  drawCoverSourceIntoGrid(
+    sampler.sourceContext,
+    source,
+    outputWidth,
+    outputHeight,
+    columns,
+    rows,
+  );
   glCanvas.width = columns;
   glCanvas.height = rows;
   gl.useProgram(sampler.program);
@@ -414,17 +394,16 @@ function renderAsciiObjectToBitmap({
   }
   context.setTransform(deviceScale, 0, 0, deviceScale, 0, 0);
 
-  const columns = Math.max(1, Math.ceil(width / settings.cellSize));
-  const rows = Math.max(1, Math.ceil(height / settings.cellSize));
-  const pixels = sampleCells(source, columns, rows);
+  const grid = getAsciiGrid(width, height, settings.cellSize);
+  const pixels = sampleCells(source, grid.columns, grid.rows, width, height);
 
-  context.font = `${Math.round(settings.cellSize * 1.08)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+  context.font = `${grid.fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
   context.textAlign = "center";
   context.textBaseline = "middle";
 
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      const rgb = rgbFromCell(pixels, columns, column, row);
+  for (let row = 0; row < grid.rows; row += 1) {
+    for (let column = 0; column < grid.columns; column += 1) {
+      const rgb = rgbFromCell(pixels, grid.columns, column, row);
       const tone = (rgb.r * 0.2126 + rgb.g * 0.7152 + rgb.b * 0.0722) / 255;
       const glyph = mapToneToGlyph(tone, settings);
       if (glyph === " ") {
@@ -434,8 +413,8 @@ function renderAsciiObjectToBitmap({
         settings.colorMode === "source" ? `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})` : settings.ink;
       context.fillText(
         glyph,
-        column * settings.cellSize + settings.cellSize / 2,
-        row * settings.cellSize + settings.cellSize / 2,
+        column * grid.cellWidth + grid.cellWidth / 2,
+        row * grid.cellHeight + grid.cellHeight / 2,
       );
     }
   }
@@ -471,7 +450,6 @@ export type SceneSourceResolver = (layerId: string) => AsciiRenderSource | undef
 // Composite every visible object's ASCII into a canvas at its placement rect,
 // reusing per-object cached bitmaps so only changed objects re-rasterize.
 export function compositeAsciiScene({
-  activeVideoLayerId,
   cache,
   canvas,
   cssHeight,
@@ -480,7 +458,6 @@ export function compositeAsciiScene({
   resolveSource,
   state,
 }: {
-  activeVideoLayerId: string | null;
   cache: Map<string, BitmapCacheEntry>;
   canvas: HTMLCanvasElement;
   cssHeight: number;
@@ -518,10 +495,7 @@ export function compositeAsciiScene({
     }
     const settings = getObjectAsciiSettings(state, layer.id);
     const asset = getLayerAsset(state, layer.id);
-    const frameId =
-      layer.id === activeVideoLayerId
-        ? `t:${state.timeline.currentTimeSeconds.toFixed(3)}`
-        : `static:${asset?.dataUrl.slice(0, 24) ?? ""}`;
+    const frameId = `static:${asset?.dataUrl.slice(0, 24) ?? ""}`;
     const key = objectBitmapKey(settings, geometry.w, geometry.h, pixelRatio, frameId);
 
     let entry = cache.get(layer.id);
@@ -556,7 +530,7 @@ function sizeRendererCanvas(
 }
 
 // ---------------------------------------------------------------------------
-// Object source manager: decoded images, one live video, captured stills.
+// Object source manager: decoded still images are cached by media asset id.
 // ---------------------------------------------------------------------------
 
 type ObjectSources = {
@@ -564,12 +538,8 @@ type ObjectSources = {
   version: number;
 };
 
-function useObjectSources(state: ToolcraftState, activeVideoLayerId: string | null): ObjectSources {
+function useObjectSources(state: ToolcraftState): ObjectSources {
   const imageCacheRef = React.useRef<Map<string, HTMLImageElement>>(new Map());
-  const stillCacheRef = React.useRef<Map<string, HTMLCanvasElement>>(new Map());
-  const activeVideoRef = React.useRef<{ dataUrl: string; el: HTMLVideoElement; layerId: string } | null>(
-    null,
-  );
   const [version, setVersion] = React.useState(0);
   const bump = React.useCallback(() => setVersion((value) => value + 1), []);
 
@@ -578,7 +548,7 @@ function useObjectSources(state: ToolcraftState, activeVideoLayerId: string | nu
     .map((layer) => `${layer.id}:${getLayerAsset(state, layer.id)?.dataUrl.slice(0, 16) ?? ""}`)
     .join("|");
 
-  // Decode images and capture stills for non-active video objects.
+  // Decode source images once and reuse them across recomposites.
   React.useEffect(() => {
     let cancelled = false;
     for (const layer of layers) {
@@ -586,33 +556,11 @@ function useObjectSources(state: ToolcraftState, activeVideoLayerId: string | nu
       if (!asset) {
         continue;
       }
-      if (!isVideoAsset(asset)) {
-        if (!imageCacheRef.current.has(asset.id)) {
-          void loadImage(asset.dataUrl)
-            .then((image) => {
-              if (!cancelled) {
-                imageCacheRef.current.set(asset.id, image);
-                bump();
-              }
-            })
-            .catch(() => undefined);
-        }
-        continue;
-      }
-      // Non-active video object: capture a still frame once.
-      if (layer.id !== activeVideoLayerId && !stillCacheRef.current.has(asset.id)) {
-        void loadVideoElement(asset.dataUrl)
-          .then(async (video) => {
-            await seekVideoElement(video, 0);
-            const still = document.createElement("canvas");
-            still.width = Math.max(1, video.videoWidth);
-            still.height = Math.max(1, video.videoHeight);
-            still.getContext("2d")?.drawImage(video, 0, 0);
-            video.pause();
-            video.removeAttribute("src");
-            video.load();
+      if (!imageCacheRef.current.has(asset.id)) {
+        void loadImage(asset.dataUrl)
+          .then((image) => {
             if (!cancelled) {
-              stillCacheRef.current.set(asset.id, still);
+              imageCacheRef.current.set(asset.id, image);
               bump();
             }
           })
@@ -623,7 +571,7 @@ function useObjectSources(state: ToolcraftState, activeVideoLayerId: string | nu
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bump, decodeSignature, activeVideoLayerId]);
+  }, [bump, decodeSignature]);
 
   // Keep a ref to state for the resolver (called outside render during playback).
   const stateRefForSources = React.useRef(state);
@@ -635,20 +583,12 @@ function useObjectSources(state: ToolcraftState, activeVideoLayerId: string | nu
       if (!asset) {
         return undefined;
       }
-      if (isVideoAsset(asset)) {
-        if (layerId === activeVideoLayerId && activeVideoRef.current?.el) {
-          return activeVideoRef.current.el;
-        }
-        return stillCacheRef.current.get(asset.id);
-      }
       return imageCacheRef.current.get(asset.id);
     },
-    [activeVideoLayerId],
+    [],
   );
 
-  return { activeVideoRef, resolve, version } as ObjectSources & {
-    activeVideoRef: React.MutableRefObject<{ dataUrl: string; el: HTMLVideoElement; layerId: string } | null>;
-  };
+  return { resolve, version };
 }
 
 // ---------------------------------------------------------------------------
@@ -682,15 +622,10 @@ export function AsciiImageRenderer(): React.JSX.Element {
   const stateRef = React.useRef(state);
   stateRef.current = state;
 
-  const activeVideoLayerId = getActiveVideoLayerId(state);
-  const sources = useObjectSources(state, activeVideoLayerId) as ObjectSources & {
-    activeVideoRef: React.MutableRefObject<{ dataUrl: string; el: HTMLVideoElement; layerId: string } | null>;
-  };
+  const sources = useObjectSources(state);
   const { resolve } = sources;
   const resolveRef = React.useRef(resolve);
   resolveRef.current = resolve;
-  const activeVideoLayerIdRef = React.useRef(activeVideoLayerId);
-  activeVideoLayerIdRef.current = activeVideoLayerId;
 
   const renderScale = readNumber(state.values["canvas.renderScale"], 2);
   const zoom = state.canvas.zoom || 100;
@@ -705,8 +640,6 @@ export function AsciiImageRenderer(): React.JSX.Element {
     state.values["export.includeBackground"],
     renderScale,
     sources.version,
-    activeVideoLayerId,
-    state.timeline.currentTimeSeconds,
     visibleLayers
       .map((layer) => {
         const g = getObjectGeometry(state, layer.id);
@@ -727,7 +660,6 @@ export function AsciiImageRenderer(): React.JSX.Element {
     }
     sizeRendererCanvas(canvas, current, readNumber(current.values["canvas.renderScale"], 2));
     compositeAsciiScene({
-      activeVideoLayerId: activeVideoLayerIdRef.current,
       cache: cacheRef.current,
       canvas,
       cssHeight: current.canvas.size.height,
@@ -742,11 +674,6 @@ export function AsciiImageRenderer(): React.JSX.Element {
     const frame = requestAnimationFrame(() => recompositeRef.current());
     return () => cancelAnimationFrame(frame);
   }, [sceneSignature]);
-
-  // Timeline transport visible only when a video object is active.
-  React.useEffect(() => {
-    dispatch({ hidden: activeVideoLayerId == null, panelId: "timeline", type: "panels.setHidden" });
-  }, [dispatch, activeVideoLayerId]);
 
   // Aspect-correct sizing: once a source decodes, fit the object's rect to the
   // source's real aspect ratio (inside 640x360), once per object and never over a
@@ -782,84 +709,6 @@ export function AsciiImageRenderer(): React.JSX.Element {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, objectIdsSignature, sources.version]);
-
-  // Active video: decode + play + drive per-frame recomposite.
-  const activeVideoAsset = activeVideoLayerId ? getLayerAsset(state, activeVideoLayerId) : undefined;
-  const activeVideoDataUrl = activeVideoAsset?.dataUrl ?? "";
-  const isPlaying = state.timeline.isPlaying;
-  const isLooping = state.timeline.isLooping;
-
-  React.useEffect(() => {
-    if (!activeVideoLayerId || !activeVideoDataUrl) {
-      const existing = sources.activeVideoRef.current;
-      if (existing) {
-        existing.el.pause();
-        existing.el.removeAttribute("src");
-        existing.el.load();
-      }
-      sources.activeVideoRef.current = null;
-      return;
-    }
-
-    let cancelled = false;
-    void loadVideoElement(activeVideoDataUrl).then((video) => {
-      if (cancelled) {
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
-        return;
-      }
-      sources.activeVideoRef.current = { dataUrl: activeVideoDataUrl, el: video, layerId: activeVideoLayerId };
-      if (Number.isFinite(video.duration) && video.duration > 0) {
-        dispatch({ durationSeconds: video.duration, type: "timeline.setDuration" });
-      }
-      recompositeRef.current();
-    });
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeVideoLayerId, activeVideoDataUrl, dispatch]);
-
-  React.useEffect(() => {
-    const entry = sources.activeVideoRef.current;
-    if (!activeVideoLayerId || !isPlaying || !entry || entry.layerId !== activeVideoLayerId) {
-      return;
-    }
-    const video = entry.el;
-    let active = true;
-    video.loop = isLooping;
-    void video.play().catch(() => undefined);
-
-    let rafHandle = 0;
-    let rvfcHandle = 0;
-    const supportsRvfc = typeof video.requestVideoFrameCallback === "function";
-    const step = (): void => {
-      if (!active) {
-        return;
-      }
-      recompositeRef.current();
-      if (supportsRvfc) {
-        rvfcHandle = video.requestVideoFrameCallback(() => step());
-      } else {
-        rafHandle = requestAnimationFrame(() => step());
-      }
-    };
-    step();
-
-    return () => {
-      active = false;
-      video.pause();
-      if (rafHandle) {
-        cancelAnimationFrame(rafHandle);
-      }
-      if (rvfcHandle && typeof video.cancelVideoFrameCallback === "function") {
-        video.cancelVideoFrameCallback(rvfcHandle);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeVideoLayerId, isPlaying, isLooping, sources.version]);
 
   // --- Interaction: select, move, resize + snap guides -------------
 
@@ -1298,20 +1147,11 @@ type ResolvedExportSource = { layerId: string; source: AsciiRenderSource };
 
 async function resolveExportSources(state: ToolcraftState): Promise<Map<string, AsciiRenderSource>> {
   const map = new Map<string, AsciiRenderSource>();
-  const activeVideoLayerId = getActiveVideoLayerId(state);
   const entries = await Promise.all(
     getVisibleObjectLayers(state).map(async (layer): Promise<ResolvedExportSource | null> => {
       const asset = getLayerAsset(state, layer.id);
       if (!asset) {
         return null;
-      }
-      if (isVideoAsset(asset)) {
-        const video = await loadVideoElement(asset.dataUrl);
-        await seekVideoElement(
-          video,
-          layer.id === activeVideoLayerId ? state.timeline.currentTimeSeconds : 0,
-        );
-        return { layerId: layer.id, source: video };
       }
       const image = await loadImage(asset.dataUrl);
       return { layerId: layer.id, source: image };
@@ -1327,7 +1167,7 @@ async function resolveExportSources(state: ToolcraftState): Promise<Map<string, 
 
 export async function createAsciiExportCanvas(state: ToolcraftState): Promise<HTMLCanvasElement> {
   if (getVisibleObjectLayers(state).length === 0) {
-    throw new Error("Upload an image or video before exporting ASCII output.");
+    throw new Error("Upload an image before exporting ASCII output.");
   }
   const sources = await resolveExportSources(state);
   const background = readColor(state.values["appearance.background"], "#101010");
@@ -1360,7 +1200,6 @@ export async function createAsciiExportCanvas(state: ToolcraftState): Promise<HT
       }
       exportState.values = scaledValues;
       compositeAsciiScene({
-        activeVideoLayerId: getActiveVideoLayerId(state),
         cache,
         canvas,
         cssHeight: canvas.height,
@@ -1400,178 +1239,4 @@ export async function exportAsciiImage(state: ToolcraftState): Promise<void> {
   link.download = `ascii-image.${extension}`;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function delayMs(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, ms)));
-}
-
-const webmMimeCandidates = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
-
-function negotiateWebmMimeType(): string | undefined {
-  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
-    return undefined;
-  }
-  return webmMimeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
-}
-
-// Phase 1 video export: renders the whole composited scene per frame while the
-// active video object advances the timeline, recorded as WebM.
-export async function exportAsciiVideo(
-  state: ToolcraftState,
-  reportProgress?: (progress: number) => void,
-): Promise<void> {
-  const activeVideoLayerId = getActiveVideoLayerId(state);
-  if (!activeVideoLayerId) {
-    throw new Error("Upload a video before exporting ASCII video.");
-  }
-  reportProgress?.(0.02);
-
-  const selectedResolution = readString(state.values["export.video.resolution"], "current");
-  void readString(state.values["export.video.format"], "mp4");
-
-  const mimeType = negotiateWebmMimeType();
-  if (!mimeType) {
-    throw new Error("This browser cannot record WebM video output.");
-  }
-
-  const exportSize = getToolcraftVideoExportSize({ resolution: selectedResolution, state });
-  const includeBackground = shouldIncludeToolcraftExportBackground({
-    format: "video",
-    schema: state.schema,
-  });
-
-  const sources = await resolveExportSources(state);
-  const activeVideo = sources.get(activeVideoLayerId);
-  const activeVideoEl = activeVideo && isVideoRenderSource(activeVideo) ? activeVideo : null;
-  const durationSeconds = Math.max(
-    0.1,
-    Number.isFinite(state.timeline.durationSeconds) && state.timeline.durationSeconds > 0
-      ? state.timeline.durationSeconds
-      : activeVideoEl?.duration || 0,
-  );
-
-  const canvas = document.createElement("canvas");
-  canvas.width = exportSize.width;
-  canvas.height = exportSize.height;
-
-  const scale = state.canvas.size.width > 0 ? exportSize.width / state.canvas.size.width : 1;
-  const baseScaledValues: Record<string, unknown> = { ...state.values };
-  for (const layer of getVisibleObjectLayers(state)) {
-    const g = getObjectGeometry(state, layer.id);
-    baseScaledValues[objectValueKey(layer.id, "x")] = g.x * scale;
-    baseScaledValues[objectValueKey(layer.id, "y")] = g.y * scale;
-    baseScaledValues[objectValueKey(layer.id, "w")] = g.w * scale;
-    baseScaledValues[objectValueKey(layer.id, "h")] = g.h * scale;
-  }
-  const exportState: ToolcraftState = {
-    ...state,
-    canvas: { ...state.canvas, size: { ...state.canvas.size, height: exportSize.height, width: exportSize.width } },
-    values: baseScaledValues,
-  };
-  if (!includeBackground) {
-    exportState.values = { ...baseScaledValues, "export.includeBackground": true };
-  }
-  const cache = new Map<string, BitmapCacheEntry>();
-
-  const fps = 30;
-  const frameCount = Math.max(1, Math.round(durationSeconds * fps));
-  const frameDurationMs = 1000 / fps;
-
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    let settled = false;
-    void (async () => {
-      try {
-        canvas.width = exportSize.width;
-        canvas.height = exportSize.height;
-        const stream = canvas.captureStream(0);
-        const track = stream.getVideoTracks()[0] as
-          | (MediaStreamTrack & { requestFrame?: () => void })
-          | undefined;
-        const recorder = new MediaRecorder(stream, { mimeType });
-        const chunks: BlobPart[] = [];
-        recorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            chunks.push(event.data);
-          }
-        };
-        recorder.onerror = () => {
-          if (!settled) {
-            settled = true;
-            reject(new Error("The video recorder failed while encoding ASCII output."));
-          }
-        };
-        recorder.onstop = () => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          if (chunks.length === 0) {
-            reject(new Error("The video recorder produced no output."));
-            return;
-          }
-          resolve(new Blob(chunks, { type: mimeType }));
-        };
-        recorder.start();
-        const requestTrackFrame = () => {
-          if (typeof track?.requestFrame === "function") {
-            track.requestFrame();
-          }
-        };
-        const startWall = performance.now();
-        for (let index = 0; index < frameCount; index += 1) {
-          if (settled) {
-            return;
-          }
-          const frameTime = index / fps;
-          if (activeVideoEl) {
-            await seekVideoElement(activeVideoEl, frameTime);
-          }
-          const frameState: ToolcraftState = {
-            ...exportState,
-            timeline: { ...exportState.timeline, currentTimeSeconds: frameTime },
-          };
-          compositeAsciiScene({
-            activeVideoLayerId,
-            cache,
-            canvas,
-            cssHeight: exportSize.height,
-            cssWidth: exportSize.width,
-            deviceScale: 1,
-            resolveSource: (layerId) => sources.get(layerId),
-            state: frameState,
-          });
-          requestTrackFrame();
-          reportProgress?.(0.05 + 0.9 * ((index + 1) / frameCount));
-          const targetWall = startWall + (index + 1) * frameDurationMs;
-          const remaining = targetWall - performance.now();
-          if (remaining > 0) {
-            await delayMs(remaining);
-          }
-        }
-        requestTrackFrame();
-        await delayMs(frameDurationMs);
-        recorder.stop();
-      } catch (error) {
-        if (!settled) {
-          settled = true;
-          reject(error instanceof Error ? error : new Error("ASCII video export failed."));
-        }
-      }
-    })();
-  });
-
-  if (activeVideoEl) {
-    activeVideoEl.pause();
-    activeVideoEl.removeAttribute("src");
-    activeVideoEl.load();
-  }
-
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "ascii-video.webm";
-  link.click();
-  URL.revokeObjectURL(url);
-  reportProgress?.(1);
 }

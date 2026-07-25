@@ -4,8 +4,9 @@ import { toast } from "sonner";
 import type { ToolcraftState } from "@/toolcraft/runtime";
 import { useToolcraft } from "@/toolcraft/runtime/react";
 
-// The canvas holds at most this many uploaded objects at a time.
-export const MAX_CANVAS_OBJECTS = 2;
+// The canvas holds at most this many uploaded image objects at a time.
+export const MAX_CANVAS_OBJECTS = 5;
+const IMAGE_UPLOAD_LIMIT_MESSAGE = `You can add up to ${MAX_CANVAS_OBJECTS} images. Remove an image layer to upload another.`;
 
 // Per-object state lives in flat namespaced value keys (obj.<layerId>.<field>) so
 // it round-trips through the runtime's global values map + persistence without any
@@ -149,6 +150,51 @@ export function useSelectedObjectSync(): void {
   const objectLayerSignature = getObjectLayers(state)
     .map((layer) => layer.id)
     .join("|");
+
+  // The generated runtime owns the uploader and Layers panel. This app-level
+  // enhancement keeps those standard surfaces in sync with the object cap
+  // without reimplementing either surface.
+  React.useEffect(() => {
+    const atLimit = getObjectLayers(stateRef.current).length >= MAX_CANVAS_OBJECTS;
+    const input = document.querySelector<HTMLInputElement>('input[type="file"][accept="image/*"]');
+    const uploadSurface = input?.parentElement?.querySelector<HTMLElement>('[role="button"]');
+    const layersHeader = document.querySelector<HTMLElement>(
+      '[data-toolcraft-layers-panel] [data-slot="layers-panel-header"]',
+    );
+
+    if (!input || !uploadSurface || !layersHeader) {
+      return;
+    }
+
+    const stopUpload = (event: Event): void => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    input.disabled = atLimit;
+    uploadSurface.setAttribute("aria-disabled", String(atLimit));
+    uploadSurface.classList.toggle("pointer-events-none", atLimit);
+    uploadSurface.classList.toggle("cursor-not-allowed", atLimit);
+    uploadSurface.classList.toggle("opacity-45", atLimit);
+    layersHeader.toggleAttribute("data-image-upload-limit-reached", atLimit);
+
+    if (atLimit) {
+      layersHeader.title = IMAGE_UPLOAD_LIMIT_MESSAGE;
+      layersHeader.setAttribute("aria-label", `Layers. ${IMAGE_UPLOAD_LIMIT_MESSAGE}`);
+      ["dragenter", "dragover", "drop"].forEach((type) =>
+        uploadSurface.addEventListener(type, stopUpload, true),
+      );
+    } else {
+      layersHeader.removeAttribute("title");
+      layersHeader.removeAttribute("aria-label");
+    }
+
+    return () => {
+      ["dragenter", "dragover", "drop"].forEach((type) =>
+        uploadSurface.removeEventListener(type, stopUpload, true),
+      );
+    };
+  }, [objectLayerSignature]);
 
   // Cap the number of objects on the canvas. Uploads and duplicates append via
   // media.import; if that pushes past MAX_CANVAS_OBJECTS, remove the newest

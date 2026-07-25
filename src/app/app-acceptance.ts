@@ -354,25 +354,17 @@ export type ToolcraftControlSectionInventoryEntry = {
 };
 
 export const appTransferMode: ToolcraftTransferMode = {
-  animationIntent: {
-    loopDuration: {
-      evidence:
-        "The timeline duration is set to the uploaded video's duration on loadedmetadata via timeline.setDuration; 5s is the default until a video loads.",
-      seconds: 5,
-      source: "product-derived",
-    },
-    mode: "timeline-playback",
-  },
+  animationIntent: { mode: "none" },
   mode: "new-toolcraft-app",
 };
 
 export const appProductReadiness: ToolcraftProductReadiness = {
   mode: "product",
-  productName: "ASCII Image & Video Tool",
+  productName: "ASCII Image Tool",
   productSummary:
-    "Applies a live ASCII glyph effect to an uploaded image or video, plays video sources on the timeline, and exports the result as a still image (PNG/JPG) or a WebM video.",
+    "Applies a live ASCII glyph effect to uploaded images and exports the result as a PNG or JPG image.",
   requestedBehavior:
-    "Build an app that applies an ASCII effect to an uploaded image or video and can download the video result.",
+    "Build an app that applies an ASCII effect to uploaded images and can download the result.",
 };
 
 export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
@@ -384,13 +376,13 @@ export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
     componentType: "fileDrop",
     evidence: "media-lifecycle",
     expectedObservable:
-      "Uploading a source image or a source video creates ASCII canvas output; a video sets the timeline duration to the clip length and converts frames during playback and scrub; clearing removes the source, and global reset removes uploaded source media.",
-    fixture: "high-contrast SVG source image, and a short test video with clear motion between frames",
+      "Uploading a source image creates ASCII canvas output; clearing removes the source, and global reset removes uploaded source media.",
+    fixture: "high-contrast SVG source image",
     id: "source.image",
     kind: "control",
     target: "source.image",
     userAction:
-      "Upload/import an image or a video, verify the ASCII canvas output updates (and for a video that playback/scrub converts frames), clear/remove the source, then use Reset controls to remove uploaded source media because there is no default asset.",
+      "Upload an image, verify the ASCII canvas output updates, clear/remove it, then use Reset controls to remove uploaded source media because there is no default asset.",
   },
   {
     automated: true,
@@ -530,14 +522,14 @@ export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
     componentType: "slider",
     evidence: "product-output",
     expectedObservable:
-      "Dragging Cell size changes the number and size of the selected object's glyph cells during the drag, leaving other objects unchanged.",
+      "Dragging Cell size changes the selected object's glyph-cell height and its aspect-correct horizontal sampling density during the drag, leaving other objects unchanged.",
     fixture: "two uploaded objects with one selected",
     id: "selectedLayer.cellSize",
     kind: "control",
     layerCoverage: "selected-layer-controls",
     target: "selectedLayer.cellSize",
     userAction:
-      "Select an object, drag the real Cell size slider thumb, and verify only the selected object's density changes during the interaction.",
+      "Select an object, drag the real Cell size slider thumb, and verify only the selected object's aspect-correct density changes during the interaction.",
   },
   {
     automated: true,
@@ -632,13 +624,13 @@ export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
     componentType: "switch",
     evidence: "rendered-pixels",
     expectedObservable:
-      "Changing Background color affects preview and export, turning Include off hides the live preview product background without hiding the Toolcraft canvas backing and creates transparent PNG output, video output with product background is preserved by policy, and turning Include on includes the current background color.",
+      "Changing Background color affects preview and export, turning Include off hides the live preview product background without hiding the Toolcraft canvas backing and creates transparent PNG output, and turning Include on includes the current background color; the image-only policy keeps video output unavailable.",
     fixture: "uploaded contrast image with visible background cells",
     id: "export.includeBackground",
     kind: "control",
     target: "export.includeBackground",
     userAction:
-      "Change the Background color, toggle Include off and on, export PNG, decode pixels to verify background inclusion and transparent PNG alpha, and confirm video output with product background remains the policy when video export exists.",
+      "Change the Background color, toggle Include off and on, export PNG, and decode pixels to verify background inclusion and transparent PNG alpha; verify the image-only policy keeps video output unavailable.",
   },
   {
     automated: true,
@@ -698,14 +690,14 @@ export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
     componentType: "panelActions",
     evidence: "exported-bytes",
     expectedObservable:
-      "The sticky footer Export Video and Export PNG actions return a Promise, show progress, and download the final composited ASCII bytes for the scene.",
-    fixture: "two uploaded image objects plus an uploaded video",
+      "The sticky footer Export PNG action returns a Promise, shows progress, and downloads the final composited ASCII bytes for the scene.",
+    fixture: "two uploaded image objects",
     id: "actions.output",
-    actionCoverage: ["export-video", "export-png"],
+    actionCoverage: ["export-png"],
     kind: "control",
     target: "actions.output",
     userAction:
-      "Click Export Video and Export PNG and verify pending progress appears before decoded bytes are downloaded.",
+      "Click Export PNG and verify pending progress appears before decoded bytes are downloaded.",
   },
   {
     automated: true,
@@ -723,58 +715,6 @@ export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
     target: "actions.object",
     userAction:
       "Select an object, click Duplicate to clone it, then Bring to front and Send to back to change its composite z-order, verifying the layer list and canvas stacking update.",
-  },
-  {
-    automated: true,
-    automatedTestName: "acceptance: video export format and resolution change output",
-    browser: true,
-    browserTestName: "browser: video export format and resolution change output",
-    componentType: "select",
-    evidence: "exported-bytes",
-    expectedObservable:
-      "Choosing MP4 versus WebM negotiates a supported WebM container (MP4 falls back safely), and choosing Current versus 4K changes the encoded video dimensions through getToolcraftVideoExportSize.",
-    fixture: "uploaded short test video exported at Current and 4K",
-    id: "export.video.format",
-    kind: "control",
-    optionCoverage: ["mp4", "webm"],
-    target: "export.video.format",
-    userAction:
-      "Upload a video, choose MP4 and WebM formats, click Export Video, wait for the returned Promise progress indicator, and decode the exported blob to prove a playable video was produced.",
-  },
-  {
-    automated: true,
-    automatedTestName: "acceptance: video export format and resolution change output",
-    browser: true,
-    browserTestName: "browser: video export format and resolution change output",
-    componentType: "select",
-    evidence: "exported-bytes",
-    expectedObservable:
-      "Choosing Current versus 4K changes decoded video dimensions through getToolcraftVideoExportSize.",
-    fixture: "uploaded short test video exported at Current and 4K",
-    id: "export.video.resolution",
-    kind: "control",
-    optionCoverage: ["current", "4k"],
-    target: "export.video.resolution",
-    userAction:
-      "Upload a video, choose Current and 4K resolutions, click Export Video, wait for the returned Promise progress indicator, and decode exported video metadata to prove actual dimensions changed.",
-  },
-  {
-    automated: true,
-    automatedTestName: "acceptance: timeline playback advances video ASCII frames",
-    browser: true,
-    browserTestName: "browser: timeline playback advances video ASCII frames",
-    componentType: "timeline",
-    evidence: "timeline-output",
-    expectedObservable:
-      "Playing advances runtime timeline time across 0..state.timeline.durationSeconds and renders successive video frames as ASCII so the renderer follows state.timeline.durationSeconds; pause-resume holds and then resumes the current rendered frame; scrubbing jumps to the rendered frame at the scrubbed time; the duration follows the uploaded clip length. The video loop is seamless and forward-only: motion advances in one direction, the first and last frames stitch without a visible jump, and the same seam holds after changing the timeline duration, with no mirror, no yo-yo, no ping-pong, and no reverse playback.",
-    fixture: "uploaded short test video",
-    id: "timeline.playback",
-    kind: "runtime",
-    target: "panels.timeline",
-    timelineCoverage: "playback",
-    timelinePlaybackCoverage: ["duration", "loop", "pause-resume", "rendered-frame", "scrub"],
-    userAction:
-      "Upload a video, edit/change the timeline duration and verify the renderer follows state.timeline.durationSeconds, press Play to advance timeline time and rendered ASCII frames forward-only, Pause and resume to hold a rendered frame, scrub to jump to a rendered frame, and enable Loop to confirm the first and last frames stitch seamlessly without a visible jump after changing the duration.",
   },
   {
     automated: true,

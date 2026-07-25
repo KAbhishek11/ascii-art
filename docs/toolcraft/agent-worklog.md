@@ -4,7 +4,7 @@
 
 Mode: product
 
-Product: ASCII Image & Video Tool. The app uploads a source image or a source video, renders an ASCII glyph effect on the Toolcraft canvas, plays video sources on the timeline, and exports PNG/JPG still output or a WebM video.
+Product: ASCII Image Tool. The app uploads source images, renders an ASCII glyph effect on the Toolcraft canvas, and exports PNG/JPG output.
 
 ## Decision Trail
 
@@ -159,6 +159,68 @@ Product: ASCII Image & Video Tool. The app uploads a source image or a source vi
 
 ## Decisions
 
+### Iteration 8 — Glyph-aspect-correct ASCII sampling
+
+- Request: Fix the resolution of generated ASCII art.
+- Task type: Renderer fidelity correction.
+- User-visible result: ASCII art will use a denser horizontal sampling grid that matches the real monospace glyph footprint, removing the stretched, low-detail appearance without changing the selected canvas or export dimensions.
+- Source/reference checked: `src/app/ascii-renderer.tsx` samples `width / cellSize` square cells while rasterizing `ui-monospace` glyphs, whose measured visual width is narrower than their font height.
+- Docs/contracts read: `workflow.md`, `renderer-technique.md`, `performance.md`, `acceptance-testing.md`, `schema-reference.md`, and `component-rules.md`.
+- Contract rules applied: `canvas-no-app-ui`, `renderer-technique-inventory`, `acceptance-product-observable`, and `performance-coverage-levels`.
+- Decision: Treat Cell size as the glyph cell height; derive the horizontal cell width from the monospace glyph aspect ratio in one shared grid helper, and use that grid for sampling and glyph placement in preview and export.
+- Alternatives rejected: Reducing the Cell size default or lowering its minimum would increase workload, change the user-selected density semantics, and still leave the aspect-ratio error; scaling a low-resolution bitmap would blur/alias text and violates the native-fidelity renderer contract.
+- State/output mapping: `selectedLayer.cellSize` continues to control grid cell height; the derived width changes `sampleCells` columns and `fillText` X positions for every preview, PNG, and video frame.
+- Files changed: `src/app/ascii-renderer.tsx`, `src/app/ascii-renderer.test.ts`, `src/app/app-acceptance.ts`, and this worklog. No Toolcraft runtime files changed.
+- Verification: Tier 3 targeted renderer test passes (2/2). Local browser check with a high-contrast 1600×900 fixture confirms the ASCII product canvas renders at 10240×5760 backing pixels (2560×1440 canvas at selected render scale 2), preserving the selected output resolution.
+- Performance: The full browser performance checkpoint is not required for this post-first-working, non-performance fidelity correction; workload limits and exposed controls are unchanged.
+- Risks: The 0.62 aspect factor is calibrated to the existing browser monospace fallback stack. Browsers with a substantially different fallback font may have a small glyph-spacing variance, but sampling and rendering stay aligned because they share this grid.
+
+### Iteration 9 — Image-only product scope
+
+- Request: Remove video upload and every video-related capability from the tool.
+- Task type: Product behavior reduction; source media, renderer, timeline, export, acceptance, and performance reconciliation.
+- User-visible result: The tool accepts images only, shows no timeline or video-export controls, and exports ASCII art as PNG or JPG only.
+- Source/reference checked: `app-schema.ts`, `ascii-renderer.tsx`, `routes/index.tsx`, acceptance/performance matrices, and browser test inventory.
+- Docs/contracts read: `workflow.md`, `schema-reference.md`, `component-rules.md`, `acceptance-testing.md`, and `performance.md`.
+- Contract rules applied: `timeline-mode-choice`, `output-export-required`, `controls-product-coverage`, `renderer-technique-inventory`, and `acceptance-product-observable`.
+- Decision: Retain the image-only WebGL sampling plus Canvas glyph renderer, Layers panel, image fileDrop, Background, Image Export, and Export PNG action. Remove timeline configuration, video export settings/action, video renderer lifecycle, video tests, and all video-specific performance/acceptance evidence.
+- Alternatives rejected: Hiding video controls while keeping the decoder/recorder paths would retain unreachable behavior and needless media complexity; retaining the timeline without animated output would violate the panel enablement contract.
+- State/output mapping: `source.image` accepts image media and drives the still ASCII composite; `export.image.format` and `export.image.resolution` remain the only delivery targets.
+- Files changed: `src/app/app-schema.ts`, `src/app/ascii-renderer.tsx`, `src/routes/index.tsx`, acceptance/performance/schema tests and matrices, `e2e` video coverage removal, and this worklog.
+- Verification: Tier 3 `npm run verify:quick` passes (259 tests). A focused agent-browser check confirms `accept="image/*"`, Image Export and Export PNG remain visible, and the page contains no Timeline, Video, WebM, or MP4 controls.
+- Performance: The full browser performance checkpoint is not required for this post-first-working non-performance scope reduction; the unchanged image workload scenarios remain in `app-performance.ts`.
+- Risks: Existing persisted browser state containing old video-related values is harmless because no schema control or renderer path consumes those values.
+
+### Iteration 10 — Five-image canvas capacity
+
+- Request: Increase the photo upload limit to five while keeping ASCII art resolution high.
+- Task type: Media-capacity and renderer-workload adjustment.
+- User-visible result: Users can place up to five source images on the canvas. The selected render scale, aspect-correct glyph grid, and image export resolution choices remain unchanged.
+- Source/reference checked: `use-selected-object.ts` capacity guard, `app-performance.ts` composite workload fixture, and multi-object browser coverage.
+- Docs/contracts read: `workflow.md`, `performance.md`, `acceptance-testing.md`, and the required brainstorming/planning workflow skills.
+- Contract rules applied: `layers-enabled-behavior`, `renderer-technique-inventory`, `performance-coverage-levels`, and `acceptance-product-observable`.
+- Decision: Raise the app-side media cap from two to five and align the object-composite hard limit and smooth target to five objects at render scale 2. Do not reduce Cell size, render scale, source-media fixture size, or image export resolution.
+- Alternatives rejected: Removing the cap entirely would leave the renderer with an unbounded workload; reducing preview or export fidelity to make extra objects cheaper would conflict with the high-resolution requirement.
+- State/output mapping: The `MAX_CANVAS_OBJECTS` guard retains the first five imported object layers; five cached object bitmaps compose at the existing selected backing scale.
+- Files changed: `src/app/use-selected-object.ts`, targeted capacity/performance coverage, and this worklog.
+- Verification: Tier 3 `npm run verify:quick` passes (260 tests). Browser verification imported an image and duplicated it to five canvas objects; the product canvas remained at the selected 10240×5760 backing resolution (2560×1440 at render scale 2).
+- Performance: The full browser performance checkpoint is not required for this post-first-working capacity adjustment; the `ascii-object-composite` workload fixture now exercises the real five-object hard limit at render scale 2.
+- Risks: Five dense 4K-source objects can take longer to compose than a single object, but the cap bounds the workload and resolution quality remains user-selected rather than reduced.
+
+### Iteration 11 — Capacity-aware image upload affordance
+
+- Request: Disable image upload once five images are present and explain the limit in the Layers panel.
+- Task type: Media import behavior and layers-panel feedback.
+- Verification tier: Tier 3.
+- Reason: The change affects runtime media imports, the built-in fileDrop interaction, and the Layers panel while retaining the existing renderer workload.
+- Decision: Keep the generated Toolcraft runtime intact. The app observes its existing five-object state and enhances the runtime-owned uploader and Layers header: the uploader disables and ignores drops at capacity, while the Layers header receives a native tooltip with the removal guidance. The existing overflow guard remains the command-level fallback for canvas drops and duplicate actions.
+- Alternatives rejected: Editing the copied Toolcraft runtime to add a generic media-cap schema would fail the generated-app integrity contract; recreating the uploader or Layers panel in app code would violate the runtime-shell boundary.
+- State/output mapping: `getObjectLayers(state).length >= MAX_CANVAS_OBJECTS` disables the Source image input and updates the existing Layers header tooltip. Deleting an image reduces the count and restores the uploader.
+- Files changed: `src/app/use-selected-object.ts`, `e2e/app-multi-object.spec.ts`, and this worklog.
+- Verification: Tier 3 `npm run verify:quick` passes (260 tests). Agent-browser verification uploaded five images, observed five Layers rows, a disabled `Browse file` control, and the tooltip: “You can add up to 5 images. Remove an image layer to upload another.”
+- Performance: The full browser performance checkpoint is not required for this post-first-working non-performance UI behavior change; the five-object composite workload remains unchanged.
+- Risks: The disabled affordance prevents the normal Source upload path, while the existing object-cap cleanup remains the fallback for a canvas-drop or action command that arrives while capacity is full.
+
 ### Renderer
 
 - Decision: Mixed WebGL sampling plus Canvas 2D glyph raster/export.
@@ -167,9 +229,9 @@ Product: ASCII Image & Video Tool. The app uploads a source image or a source vi
 
 ### Timeline
 
-- Decision: Top playback timeline enabled (mode "playback", defaultDurationSeconds 5).
-- Reason: Video sources are animated product output and Export Video requires the top Toolcraft timeline; playback transport does not need keyframes.
-- Evidence: appTransferMode animationIntent is timeline-playback (loopDuration 5s, product-derived), appSchema panels.timeline.enabled is true, and the renderer reads state.timeline.currentTimeSeconds to render frames.
+- Decision: No timeline panel.
+- Reason: Image-only output has no animated product behavior or video export.
+- Evidence: appTransferMode animationIntent is none, appSchema omits panels.timeline, and the renderer has no timeline reads.
 
 ### Layers
 
@@ -185,9 +247,9 @@ Product: ASCII Image & Video Tool. The app uploads a source image or a source vi
 
 ### Export
 
-- Decision: Dual export — Export PNG (PNG/JPG, 2K/4K/8K) for still frames and Export Video (WebM, Current/4K) for video sources; Image Export is placed immediately before Video Export, both directly above the sticky footer actions.
-- Reason: Still products expose Export PNG and animated products additionally expose Export Video; each action validates the active source at runtime.
-- Evidence: createAsciiExportCanvas passes includeBackground and export.image.resolution into createToolcraftPngExportCanvas; exportAsciiVideo uses getToolcraftVideoExportSize, shouldIncludeToolcraftExportBackground, and MediaRecorder.isTypeSupported and reads export.video.format/resolution.
+- Decision: Still-image export only — PNG/JPG at 2K/4K/8K through Export PNG.
+- Reason: The product is image-only and has no animated output to encode.
+- Evidence: createAsciiExportCanvas passes includeBackground and export.image.resolution into createToolcraftPngExportCanvas; the schema exposes Image Export and Export PNG only.
 
 ### Performance
 

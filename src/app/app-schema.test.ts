@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { appPerformance } from "./app-performance";
 import { appSchema, starterControlSectionInventory } from "./app-schema";
+import { MAX_CANVAS_OBJECTS } from "./use-selected-object";
 
 function section(title: string) {
   const found = appSchema.panels.controls?.sections.find((item) => item.title === title);
@@ -17,7 +18,7 @@ describe("appSchema", () => {
     expect(appSchema.canvas.sizing).toEqual({ mode: "editable-output" });
     expect(appSchema.canvas.upload).toBe(true);
     expect(appSchema.panels.layers).toBe(true);
-    expect(appSchema.panels.timeline).toMatchObject({ enabled: true, mode: "playback" });
+    expect(appSchema.panels.timeline).toBeUndefined();
     expect(appSchema.toolbar).toEqual({
       history: true,
       radar: true,
@@ -28,7 +29,6 @@ describe("appSchema", () => {
       "canvas",
       "controlsPanel",
       "layersPanel",
-      "timelinePanel",
       "toolbar",
     ]);
     expect(appSchema.assembly.capabilities).toEqual(
@@ -45,8 +45,7 @@ describe("appSchema", () => {
         "toolbar.zoom",
       ]),
     );
-    expect(appSchema.assembly.capabilities).toContain("timeline.playback");
-    expect(appSchema.assembly.capabilities).not.toContain("timeline.keyframes");
+    expect(appSchema.assembly.capabilities).not.toContain("timeline.playback");
   });
 
   it("groups product controls by source, ASCII effect, background, and export workflow", () => {
@@ -64,7 +63,6 @@ describe("appSchema", () => {
       "Arrange",
       "Background",
       "Image Export",
-      "Video Export",
     ]);
     expect(starterControlSectionInventory.map((section) => section.title)).toEqual([
       "Source",
@@ -72,7 +70,6 @@ describe("appSchema", () => {
       "Arrange",
       "Background",
       "Image Export",
-      "Video Export",
     ]);
   });
 
@@ -294,45 +291,10 @@ describe("appSchema", () => {
     );
   });
 
-  it("acceptance: source upload accepts image and video", () => {
+  it("acceptance: source upload accepts images only", () => {
     expect(section("Source").controls.sourceImage.assetKind).toBe("file");
     expect(section("Source").controls.sourceImage.accept).toContain("image/*");
-    expect(section("Source").controls.sourceImage.accept).toContain("video/*");
-  });
-
-  it("acceptance: video export format and resolution change output", () => {
-    expect(section("Video Export").controls.videoFormat.target).toBe("export.video.format");
-    expect(section("Video Export").controls.videoResolution.target).toBe(
-      "export.video.resolution",
-    );
-  });
-
-  it("acceptance: timeline playback advances video ASCII frames", () => {
-    expect(appSchema.panels.timeline).toMatchObject({ enabled: true, mode: "playback" });
-  });
-
-  it("perf: Video timeline playback renders frames under budget", () => {
-    expect(appPerformance.scenarios.map((scenario) => scenario.id)).toContain(
-      "ascii-video-playback-render",
-    );
-  });
-
-  it("perf: Video resolution select uses export workload values", () => {
-    expect(appPerformance.scenarios.map((scenario) => scenario.id)).toContain(
-      "ascii-video-resolution-change",
-    );
-  });
-
-  it("perf: Video format select stays responsive", () => {
-    expect(appPerformance.scenarios.map((scenario) => scenario.id)).toContain(
-      "ascii-video-format-change",
-    );
-  });
-
-  it("perf: ASCII video export completes at selected resolution", () => {
-    expect(appPerformance.scenarios.map((scenario) => scenario.id)).toContain(
-      "ascii-video-export",
-    );
+    expect(section("Source").controls.sourceImage.accept).not.toContain("video/*");
   });
 
   it("acceptance: layers panel selects objects", () => {
@@ -363,6 +325,12 @@ describe("appSchema", () => {
     expect(appPerformance.scenarios.map((scenario) => scenario.id)).toContain(
       "ascii-object-composite",
     );
+  });
+
+  it("allows up to five image objects and measures that real composite limit", () => {
+    expect(MAX_CANVAS_OBJECTS).toBe(5);
+    const scenario = appPerformance.scenarios.find((item) => item.id === "ascii-object-composite");
+    expect(scenario?.stressFixture?.value).toMatchObject({ objectCount: 5, renderScale: 2 });
   });
 
   it("perf: layer interactions keep viewport stable", () => {
