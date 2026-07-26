@@ -255,6 +255,57 @@ export function useSelectedObjectSync(): void {
     }
   }, [dispatch, objectLayerSignature]);
 
+  // The runtime Layers panel retains one active edit layer. Shift-clicking a
+  // layer row extends the app-owned export selection without replacing that
+  // editing model, matching familiar design-tool batch selection behavior.
+  React.useEffect(() => {
+    const layerList = document.querySelector<HTMLElement>("[data-layer-list]");
+    if (!layerList) {
+      return;
+    }
+
+    const handleShiftPointerDown = (event: PointerEvent): void => {
+      if (!event.shiftKey || !(event.target instanceof Element)) {
+        return;
+      }
+      const row = event.target.closest<HTMLElement>("[data-layer-id]");
+      const layerId = row?.dataset.layerId;
+      if (!layerId) {
+        return;
+      }
+
+      const current = stateRef.current;
+      const visibleIds = new Set(getVisibleObjectLayers(current).map((layer) => layer.id));
+      if (!visibleIds.has(layerId)) {
+        return;
+      }
+      const stored = current.values["export.selection"];
+      const storedSelection = Array.isArray(stored)
+        ? stored.filter((id): id is string => typeof id === "string" && visibleIds.has(id))
+        : [];
+      const next = new Set(
+        storedSelection.length > 0
+          ? storedSelection
+          : current.selectedLayerId && visibleIds.has(current.selectedLayerId)
+            ? [current.selectedLayerId]
+            : [],
+      );
+      if (next.has(layerId)) {
+        next.delete(layerId);
+      } else {
+        next.add(layerId);
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      dispatch({ target: "export.selection", type: "controls.setValue", value: [...next] });
+      dispatch({ layerId, type: "layers.select" });
+    };
+
+    layerList.addEventListener("pointerdown", handleShiftPointerDown, true);
+    return () => layerList.removeEventListener("pointerdown", handleShiftPointerDown, true);
+  }, [dispatch, objectLayerSignature]);
+
   React.useEffect(() => {
     const current = stateRef.current;
     const objectLayers = getObjectLayers(current);

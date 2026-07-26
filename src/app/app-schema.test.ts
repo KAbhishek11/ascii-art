@@ -89,6 +89,7 @@ describe("appSchema", () => {
         "selectedLayer.ink",
         "export.includeBackground",
         "appearance.background",
+        "export.selection",
         "export.image.format",
         "export.image.resolution",
       ]),
@@ -149,6 +150,17 @@ describe("appSchema", () => {
 
   it("acceptance: image export format and resolution change output bytes", () => {
     expect(section("Image Export").title).toBe("Image Export");
+  });
+
+  it("acceptance: selected images export as separate downloads", () => {
+    expect(section("Image Export").controls.exportSelection).toMatchObject({
+      target: "export.selection",
+      type: "exportSelection",
+    });
+  });
+
+  it("acceptance: shift-click layer rows creates a multi-image export selection", () => {
+    expect(section("Image Export").controls.exportSelection.target).toBe("export.selection");
   });
 
   it("acceptance: localStorage persistence restores ASCII settings", () => {

@@ -3157,6 +3157,7 @@ describe("Toolcraft template app acceptance coverage", () => {
       "appearance.background",
       "export.image.format",
       "export.image.resolution",
+      "export.selection",
     ]);
   });
 

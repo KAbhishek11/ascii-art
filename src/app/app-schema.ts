@@ -33,9 +33,9 @@ export const starterControlSectionInventory = [
   {
     title: "Image Export",
     workflowStage: "Output delivery",
-    targets: ["export.image.format", "export.image.resolution"],
+    targets: ["export.image.format", "export.image.resolution", "export.selection"],
     groupingReason:
-      "The export format and resolution controls tune the still image delivered by the sticky export action.",
+      "The selected uploaded images, export format, and resolution determine the separate still-image files delivered by the sticky export action.",
   },
 ] as const;
 
@@ -238,6 +238,17 @@ export const appSchema = defineToolcraft({
               performanceRole: "workload",
               target: "export.image.resolution",
               type: "select",
+            },
+            exportSelection: {
+              defaultValue: [],
+              description: "Choose one or more images. Each downloads at its own bounds with the selected background.",
+              label: "Images",
+              orderRole: "advanced",
+              performanceReason:
+                "Selection limits export work to the chosen uploaded image objects without changing the live canvas.",
+              performanceRole: "responsiveness",
+              target: "export.selection",
+              type: "exportSelection",
             },
           },
           layoutGroups: [
