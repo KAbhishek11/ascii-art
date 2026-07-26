@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { appPerformance } from "./app-performance";
 import { appSchema, starterControlSectionInventory } from "./app-schema";
-import { MAX_CANVAS_OBJECTS } from "./use-selected-object";
+import { computeSeedRect, MAX_CANVAS_OBJECTS } from "./use-selected-object";
 
 function section(title: string) {
   const found = appSchema.panels.controls?.sections.find((item) => item.title === title);
@@ -60,14 +60,12 @@ describe("appSchema", () => {
     expect(productSections.map((section) => section.title)).toEqual([
       "Source",
       "Object",
-      "Arrange",
       "Background",
       "Image Export",
     ]);
     expect(starterControlSectionInventory.map((section) => section.title)).toEqual([
       "Source",
       "Object",
-      "Arrange",
       "Background",
       "Image Export",
     ]);
@@ -114,6 +112,7 @@ describe("appSchema", () => {
 
   it("acceptance: source image upload drives ASCII output", () => {
     expect(section("Source").controls.sourceImage.target).toBe("source.image");
+    expect(section("Source").controls.sourceImage.multiple).toBe(true);
   });
 
   it("acceptance: glyph selector changes ASCII characters", () => {
@@ -134,16 +133,6 @@ describe("appSchema", () => {
 
   it("acceptance: invert switch reverses ASCII tone mapping", () => {
     expect(section("Object").controls.invert.type).toBe("switch");
-  });
-
-  it("acceptance: object arrange actions duplicate and reorder the selected object", () => {
-    const arrange = section("Arrange").controls.arrange;
-    expect(arrange.type).toBe("actions");
-    expect(arrange.actions?.map((a) => (typeof a === "string" ? a : a.value))).toEqual([
-      "object-duplicate",
-      "object-front",
-      "object-back",
-    ]);
   });
 
   it("acceptance: color mode select switches mono and source color", () => {
@@ -230,12 +219,6 @@ describe("appSchema", () => {
   it("perf: Invert toggle stays responsive", () => {
     expect(appPerformance.scenarios.map((scenario) => scenario.id)).toContain(
       "ascii-invert-change",
-    );
-  });
-
-  it("perf: Object arrange actions stay responsive", () => {
-    expect(appPerformance.scenarios.map((scenario) => scenario.id)).toContain(
-      "ascii-arrange-change",
     );
   });
 
@@ -331,6 +314,24 @@ describe("appSchema", () => {
     expect(MAX_CANVAS_OBJECTS).toBe(5);
     const scenario = appPerformance.scenarios.find((item) => item.id === "ascii-object-composite");
     expect(scenario?.stressFixture?.value).toMatchObject({ objectCount: 5, renderScale: 2 });
+  });
+
+  it("seeds five batch-uploaded images into non-overlapping canvas slots", () => {
+    const canvas = { height: 1440, width: 2560 };
+    const rects = Array.from({ length: MAX_CANVAS_OBJECTS }, (_, index) =>
+      computeSeedRect({ height: 160, width: 240 }, canvas, index),
+    );
+
+    for (const [index, first] of rects.entries()) {
+      for (const second of rects.slice(index + 1)) {
+        const overlaps =
+          first.x < second.x + second.w &&
+          first.x + first.w > second.x &&
+          first.y < second.y + second.h &&
+          first.y + first.h > second.y;
+        expect(overlaps).toBe(false);
+      }
+    }
   });
 
   it("perf: layer interactions keep viewport stable", () => {

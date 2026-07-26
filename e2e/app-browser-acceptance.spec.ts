@@ -228,6 +228,50 @@ test("browser acceptance matrix points at real fallback Playwright tests", () =>
   }
 });
 
+test("browser mobile visitors receive the desktop experience notice", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "Best experienced on desktop" })).toBeVisible();
+  await expect(page.getByText(/Please open it on a desktop or laptop to continue/i)).toBeVisible();
+  await expect(page.locator(".desktop-experience-workspace")).toBeHidden();
+});
+
+test("browser desktop visitors can access the Toolcraft workspace", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "Best experienced on desktop" })).toBeHidden();
+  await expect(page.locator(".desktop-experience-workspace")).toBeVisible();
+  await expect(page.getByRole("application", { name: "Canvas viewport" })).toBeVisible();
+});
+
+test("browser: Layers panel hides the add layer option", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Add layer" })).toBeHidden();
+});
+
+test("browser: bottom-left upload help explains the five-image limit", async ({ page }) => {
+  await page.goto("/");
+  const help = page.getByRole("button", { name: "Image upload limit information" });
+  await expect(help).toBeVisible();
+  const bounds = await help.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeLessThan((await page.viewportSize())!.width / 2);
+  await help.hover();
+  const tooltip = page.getByText(/Upload up to 5 images at once/i);
+  await expect(tooltip).toBeVisible({ timeout: 100 });
+  await expect(tooltip).toHaveCSS("animation-duration", "0.03s");
+});
+
+test("browser: Arrange options are absent from the controls panel", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Arrange" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^duplicate$/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /bring to front/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /send to back/i })).toHaveCount(0);
+});
+
 test("browser product-output rows use the shared product observable helper", () => {
   const browserTestSources = readSiblingBrowserTestSources();
 

@@ -499,21 +499,6 @@ export const appPerformance: ToolcraftPerformanceConfig = defineToolcraftPerform
     },
     {
       automated: true,
-      automatedTestName: "perf: Object arrange actions stay responsive",
-      browser: true,
-      browserTestName: "browser perf: Object arrange actions stay responsive",
-      budget: { maxFrameGapMs: 120, maxInteractionMs: 900 },
-      controlLabel: "Duplicate",
-      expectedObservable:
-        "Duplicate and bring-to-front/send-to-back update the scene and layer order without viewport jank.",
-      fixture: "two uploaded image objects",
-      id: "ascii-arrange-change",
-      interaction: "control-change",
-      target: "actions.object",
-      workload: false,
-    },
-    {
-      automated: true,
       automatedTestName: "perf: Color mode select stays responsive",
       browser: true,
       browserTestName: "browser perf: Color mode select stays responsive",

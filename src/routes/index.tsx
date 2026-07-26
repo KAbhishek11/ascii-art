@@ -1,5 +1,7 @@
 import { ToolcraftApp } from "@/toolcraft/runtime/react";
 import type { ToolcraftPanelActionHandler } from "@/toolcraft/runtime/react";
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@/toolcraft/ui";
+import { InfoIcon } from "@phosphor-icons/react";
 import { Toaster } from "sonner";
 
 import {
@@ -7,67 +9,11 @@ import {
   exportAsciiImage,
 } from "../app/ascii-renderer";
 import { appSchema } from "../app/app-schema";
-import {
-  OBJECT_DUPLICATE_FIELDS,
-  objectValueKey,
-  PENDING_DUPLICATE_KEY,
-} from "../app/use-selected-object";
 
 const pngExportContractEvidence =
   "createToolcraftPngExportCanvas({ includeBackground: export.includeBackground, resolution: export.image.resolution })";
 
-const handlePanelAction: ToolcraftPanelActionHandler = async ({
-  action,
-  dispatch,
-  reportProgress,
-  state,
-}) => {
-  if (action.value === "object-duplicate") {
-    const srcId = state.selectedLayerId;
-    const asset = srcId
-      ? state.mediaAssets.find((entry) => entry.layerId === srcId)
-      : undefined;
-    if (!srcId || !asset) {
-      return;
-    }
-    const snapshot: Record<string, unknown> = {};
-    for (const field of OBJECT_DUPLICATE_FIELDS) {
-      snapshot[field] = state.values[objectValueKey(srcId, field)];
-    }
-    snapshot.x = (typeof snapshot.x === "number" ? snapshot.x : 0) + 32;
-    snapshot.y = (typeof snapshot.y === "number" ? snapshot.y : 0) + 32;
-    snapshot.autoSized = true;
-    dispatch({ target: PENDING_DUPLICATE_KEY, type: "controls.setValue", value: snapshot });
-    dispatch({
-      asset: {
-        assetKind: "file",
-        dataUrl: asset.dataUrl,
-        fileName: asset.fileName,
-        mimeType: asset.mimeType,
-        position: { x: 0, y: 0 },
-        sourceTarget: "source.image",
-      },
-      type: "media.import",
-    });
-    return;
-  }
-
-  if (action.value === "object-front" || action.value === "object-back") {
-    const srcId = state.selectedLayerId;
-    if (!srcId) {
-      return;
-    }
-    const remaining = state.layers.filter((layer) => layer.id !== srcId);
-    const moved = state.layers.find((layer) => layer.id === srcId);
-    if (!moved) {
-      return;
-    }
-    const layers =
-      action.value === "object-front" ? [...remaining, moved] : [moved, ...remaining];
-    dispatch({ layers, selectedLayerId: srcId, type: "layers.reorder" });
-    return;
-  }
-
+const handlePanelAction: ToolcraftPanelActionHandler = async ({ action, reportProgress, state }) => {
   if (action.value !== "export-png") {
     return;
   }
@@ -81,13 +27,58 @@ const handlePanelAction: ToolcraftPanelActionHandler = async ({
 export function AppHome(): React.JSX.Element {
   return (
     <>
-      <ToolcraftApp
-        canvasContent={<AsciiImageRenderer />}
-        className="h-dvh min-h-dvh"
-        onPanelAction={handlePanelAction}
-        renderDefaultCanvasMedia={false}
-        schema={appSchema}
-      />
+      <main className="desktop-experience-gate">
+        <section
+          aria-labelledby="desktop-experience-title"
+          className="desktop-experience-notice"
+        >
+          <img
+            alt=""
+            aria-hidden="true"
+            className="desktop-experience-notice__mark"
+            src="/favicon.svg"
+          />
+          <h1 id="desktop-experience-title">Best experienced on desktop</h1>
+          <p>
+            ASCII Image Tool is designed for a larger screen, where you can edit,
+            arrange, and export your work comfortably. Please open it on a desktop
+            or laptop to continue.
+          </p>
+        </section>
+        <div className="desktop-experience-workspace">
+          <ToolcraftApp
+            canvasContent={<AsciiImageRenderer />}
+            className="h-dvh min-h-dvh"
+            onPanelAction={handlePanelAction}
+            renderDefaultCanvasMedia={false}
+            schema={appSchema}
+          />
+          <Tooltip>
+            <TooltipTrigger
+              delay={0}
+              render={
+                <Button
+                  aria-label="Image upload limit information"
+                  className="desktop-experience-upload-help"
+                  size="icon"
+                  type="button"
+                  variant="secondary"
+                >
+                  <InfoIcon weight="bold" />
+                </Button>
+              }
+            />
+            <TooltipContent
+              align="end"
+              className="desktop-experience-upload-help-tooltip max-w-64 whitespace-normal"
+              side="top"
+            >
+              Upload up to 5 images at once. You can select multiple files or drag them onto
+              the canvas; delete an image layer to add another.
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </main>
       <Toaster position="top-center" />
     </>
   );

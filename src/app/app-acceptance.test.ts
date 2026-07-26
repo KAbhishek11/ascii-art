@@ -3153,7 +3153,6 @@ describe("Toolcraft template app acceptance coverage", () => {
       "selectedLayer.contrast",
       "selectedLayer.brightness",
       "selectedLayer.cellSize",
-      "actions.object",
       "export.includeBackground",
       "appearance.background",
       "export.image.format",

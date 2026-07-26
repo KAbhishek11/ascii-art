@@ -24,13 +24,6 @@ export const starterControlSectionInventory = [
       "These controls own the ASCII settings of the currently selected canvas object, so editing them changes only that object's output.",
   },
   {
-    title: "Arrange",
-    entity: "Selected object arrangement",
-    targets: ["actions.object"],
-    groupingReason:
-      "Duplicate and z-order actions operate on the currently selected object, kept in their own section next to the object's editing controls.",
-  },
-  {
     title: "Background",
     entity: "Output background",
     targets: ["export.includeBackground", "appearance.background"],
@@ -72,6 +65,7 @@ export const appSchema = defineToolcraft({
               defaultValue: [],
               description: "Upload an image to convert it into ASCII art.",
               label: "Image",
+              multiple: true,
               performanceReason:
                 "Large image uploads drive decode and ASCII sampling for preview and export.",
               performanceRole: "workload",
@@ -178,25 +172,6 @@ export const appSchema = defineToolcraft({
               target: "selectedLayer.cellSize",
               type: "slider",
               unit: "px",
-            },
-          },
-        },
-        {
-          title: "Arrange",
-          controls: {
-            arrange: {
-              actions: [
-                { icon: "copy", label: "Duplicate", value: "object-duplicate" },
-                { icon: "wand-sparkles", label: "Bring to front", value: "object-front" },
-                { icon: "eraser", label: "Send to back", value: "object-back" },
-              ],
-              label: false,
-              orderRole: "action",
-              performanceReason:
-                "Object actions clone or reorder layers and do not change renderer workload.",
-              performanceRole: "responsiveness",
-              target: "actions.object",
-              type: "actions",
             },
           },
         },
