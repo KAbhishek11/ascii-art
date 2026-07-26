@@ -426,8 +426,16 @@ export function FileDropControl({
   const acceptsImageUpload = /image\//i.test(acceptValue);
   const acceptsVideoUpload = /video\//i.test(acceptValue);
   const fileUploadNoun =
-    acceptsImageUpload && acceptsVideoUpload
-      ? "an image or video"
+    multiple && acceptsImageUpload && acceptsVideoUpload
+      ? "images or videos"
+      : multiple && acceptsVideoUpload
+        ? "videos"
+        : multiple && acceptsImageUpload
+          ? "images"
+          : multiple
+            ? "files"
+            : acceptsImageUpload && acceptsVideoUpload
+              ? "an image or video"
       : acceptsVideoUpload
         ? "a video"
         : acceptsImageUpload
@@ -725,12 +733,12 @@ export function FileDropControl({
               {assetKind === "file" ? (
                 <>
                   <span>Click to upload {fileUploadNoun}</span>
-                  <span>or drag it onto the canvas</span>
+                  <span>or drag {multiple ? "them" : "it"} onto the canvas</span>
                 </>
               ) : (
                 <>
-                  <span>Click to upload an image</span>
-                  <span>or drag it onto the canvas</span>
+                  <span>Click to upload {multiple ? "images" : "an image"}</span>
+                  <span>or drag {multiple ? "them" : "it"} onto the canvas</span>
                 </>
               )}
             </p>

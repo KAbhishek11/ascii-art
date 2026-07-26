@@ -8,6 +8,215 @@ Product: ASCII Image Tool. The app uploads source images, renders an ASCII glyph
 
 ## Decision Trail
 
+### Iteration 22 — Immediate upload-help tooltip opening
+
+- Request: Make the upload-help text appear faster.
+- Task type: Route-level tooltip interaction fix.
+- Verification tier: Tier 1.
+- Reason: The fix changes only the opening delay for the one help trigger; it does not alter schema, runtime state, renderer output, media, or export behavior.
+- User-visible result: Hovering the bottom-left upload-help button opens the tooltip immediately, followed by its 30ms visual animation.
+- Source/reference checked: Base UI `TooltipTrigger` declares a 600ms default `delay`; the route had relied on the provider rather than declaring an explicit trigger delay.
+- Reference inputs: None.
+- Docs/contracts read: workflow.md; decision-contract.md; required brainstorming, writing-plans, and systematic-debugging workflow skills.
+- Contract rules applied: runtime-shell-required; canvas-no-app-ui; workflow-required.
+- Decision: Set `delay={0}` on this route-level `TooltipTrigger` while keeping the existing 30ms animation duration.
+- Alternatives rejected: Changing the shared Tooltip primitive would affect unrelated runtime help; removing the tooltip would discard the requested upload-limit guidance.
+- State/output mapping: The static trigger opens its existing content immediately; upload capacity and media state remain unchanged.
+- Files changed: src/routes/index.tsx; e2e/app-browser-acceptance.spec.ts; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. The focused browser test (`npm run test:browser -- --grep "bottom-left upload help"`) passed, including a 100ms visible assertion immediately after hover.
+- Skipped checks: Full performance suite is not required for this post-first-working interaction refinement.
+- Risks: None: the override applies only to the upload-help trigger.
+
+### Iteration 21 — Near-instant upload-help tooltip
+
+- Request: Reduce the upload-help tooltip animation to 30ms.
+- Task type: Route-level tooltip presentation refinement.
+- Verification tier: Tier 1.
+- Reason: This only changes the scoped popup animation duration; no schema, runtime state, renderer, media, or export behavior changes.
+- User-visible result: The bottom-left upload-help tooltip opens and closes in 30ms.
+- Source/reference checked: Existing scoped `desktop-experience-upload-help-tooltip` animation rule and its browser CSS assertion.
+- Reference inputs: None.
+- Docs/contracts read: workflow.md; required brainstorming and writing-plans workflow skills.
+- Contract rules applied: runtime-shell-required; canvas-no-app-ui; workflow-required.
+- Decision: Retain the local tooltip class and change only its animation duration to 30ms.
+- Alternatives rejected: Changing shared tooltip timing would affect unrelated runtime help; removing animation entirely would be harsher than requested.
+- State/output mapping: Static CSS affects only the route-level upload-help popup; the five-image upload workflow is unchanged.
+- Files changed: src/styles.css; e2e/app-browser-acceptance.spec.ts; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. The focused browser test (`npm run test:browser -- --grep "bottom-left upload help"`) passed and confirms a 30ms popup animation duration.
+- Skipped checks: Full performance suite is not required for a post-first-working presentation-only refinement.
+- Risks: None: the class is scoped to one tooltip.
+
+### Iteration 20 — Remove Arrange panel options
+
+- Request: Remove the Arrange options from the right controls panel.
+- Task type: Schema control and panel-action removal.
+- Verification tier: Tier 2.
+- Reason: The change removes a visible schema section, its action handlers, acceptance rows, and responsiveness scenario; canvas and Layers panel behavior remain unchanged.
+- User-visible result: The right panel now moves directly from Object controls to Background controls. Duplicate, Bring to front, and Send to back are no longer offered there.
+- Source/reference checked: `app-schema.ts` Arrange section, matching inventory, route action handler, acceptance rows, performance scenario, and multi-object browser test.
+- Reference inputs: None.
+- Docs/contracts read: workflow.md; schema-reference.md; component-rules.md; acceptance-testing.md; required brainstorming and writing-plans workflow skills.
+- Contract rules applied: controls-product-coverage; controls-layout-heuristics; workflow-required.
+- Decision: Remove the complete user-facing Arrange workflow rather than merely hiding its heading, so there are no stale actions or orphaned test/performance declarations.
+- Alternatives rejected: CSS-only hiding would leave keyboard-accessible actions and invalid acceptance coverage; removing the Layers panel would remove necessary image-layer behavior beyond the user request.
+- State/output mapping: No Arrange action target is declared or handled. Existing imported objects still render and can be selected; Layers retains its runtime-owned ordering controls.
+- Files changed: src/app/app-schema.ts; src/routes/index.tsx; src/app/app-acceptance.ts; src/app/app-performance.ts; src/app/app-schema.test.ts; src/app/app-acceptance.test.ts; e2e/app-multi-object.spec.ts; e2e/app-browser-acceptance.spec.ts; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. The focused browser test (`npm run test:browser -- --grep "Arrange options are absent"`) passed, confirming no Arrange heading or action buttons render. `npm run verify:quick` remains blocked at the integrity gate by the pre-existing modified shared file-drop control, unrelated to this removal.
+- Skipped checks: Full performance suite is not required because the only related responsiveness scenario was removed.
+- Risks: None: the removal is scoped to the right-panel Arrange actions, not layer management.
+
+### Iteration 19 — Faster upload-help tooltip
+
+- Request: Reduce the bottom-left upload-help tooltip animation time.
+- Task type: Route-level tooltip presentation refinement.
+- Verification tier: Tier 1.
+- Reason: The change alters only the entry animation of one static help popup; it does not affect runtime state, media import behavior, renderer output, exports, or performance workloads.
+- User-visible result: The upload-help tooltip’s enter and exit animation takes 75ms, so its five-image guidance appears nearly immediately on hover.
+- Source/reference checked: `TooltipProvider` has an existing zero hover delay; the Tooltip popup uses standard animated classes, so the observed wait comes from its animation duration.
+- Reference inputs: None.
+- Docs/contracts read: workflow.md; decision-contract.md; required brainstorming, writing-plans, and systematic-debugging workflow skills.
+- Contract rules applied: runtime-shell-required; canvas-no-app-ui; workflow-required.
+- Decision: Apply a 75ms animation-duration class only to the route-level upload-help popup.
+- Alternatives rejected: Changing the shared Tooltip primitive would speed up unrelated runtime tooltips; adding an app-local delayed state would duplicate the Tooltip’s existing behavior.
+- State/output mapping: Static CSS applies to the Tooltip content element; upload capacity and media state are unchanged.
+- Files changed: src/routes/index.tsx; src/styles.css; e2e/app-browser-acceptance.spec.ts; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. The focused native-Playwright browser test (`npm run test:browser -- --grep "bottom-left upload help"`) passed, including an assertion that the popup animation duration is 75ms.
+- Skipped checks: Full performance suite is not required for this post-first-working presentation-only refinement.
+- Risks: None: the scoped class does not affect shared tooltip behavior.
+
+### Iteration 18 — Bottom-left upload limit help
+
+- Request: Add a bottom-left hover tooltip explaining multi-image uploads and the five-image limit.
+- Task type: Route-level help affordance.
+- Verification tier: Tier 1.
+- Reason: The change adds a static, accessible explanation outside the Toolcraft canvas; it does not modify controls, media import behavior, renderer output, export, or performance.
+- User-visible result: A bottom-left information button opens a tooltip on hover or keyboard focus: “Upload up to 5 images at once. You can select multiple files or drag them onto the canvas; delete an image layer to add another.”
+- Source/reference checked: Existing five-image capacity behavior, Source uploader copy, and route-level tooltip primitives.
+- Reference inputs: None.
+- Docs/contracts read: workflow.md; decision-contract.md; acceptance-testing.md; required brainstorming and writing-plans workflow skills.
+- Contract rules applied: runtime-shell-required; canvas-no-app-ui; workflow-required.
+- Decision: Use the built-in Tooltip and Button primitives in the route outside `canvasContent`, fixed to the desktop workspace’s bottom left.
+- Alternatives rejected: Canvas text would violate the product-output-only canvas contract; a permanent banner would compete with the editor; a custom tooltip would duplicate the installed UI primitive.
+- State/output mapping: Static help only; it describes the existing `MAX_CANVAS_OBJECTS` and `multiple: true` behavior without writing runtime state.
+- Files changed: src/routes/index.tsx; src/styles.css; e2e/app-browser-acceptance.spec.ts; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. The focused native-Playwright browser test (`npm run test:browser -- --grep "bottom-left upload help"`) passed, exercising the left-edge placement, tooltip hover state, and copy.
+- Skipped checks: Full performance suite is not required for this post-first-working help affordance.
+- Risks: None: the help button is outside product canvas output and does not intercept normal canvas/editor controls.
+
+### Iteration 17 — Hide manual layer creation
+
+- Request: Remove the Layers panel plus option.
+- Task type: Layers-panel presentation refinement.
+- Verification tier: Tier 1.
+- Reason: The change hides one optional runtime panel action without changing media imports, existing layer operations, renderer output, or runtime state.
+- User-visible result: The Layers header no longer shows the plus button or its Layer/Group creation menu. Imported images continue to create their own layers.
+- Source/reference checked: User-provided Layers screenshot and the runtime LayersPanel header action contract.
+- Reference inputs: Screenshot 2026-07-26 at 6.56.05 PM.png.
+- Docs/contracts read: workflow.md; decision-contract.md; acceptance-testing.md; required brainstorming and writing-plans workflow skills.
+- Contract rules applied: panel-host-behavior; layers-enabled-behavior; workflow-required.
+- Decision: Use a narrowly scoped app stylesheet selector for the runtime action labelled `Add layer`; preserve the runtime panel, import-created layers, selection, visibility, reorder, and deletion behavior.
+- Alternatives rejected: Rebuilding the Layers header would violate the runtime-shell boundary; disabling layers would remove needed media-object editing; removing runtime reducer actions would be an unnecessary global behavior change.
+- State/output mapping: Presentation only; no product or runtime state changes.
+- Files changed: src/styles.css; e2e/app-browser-acceptance.spec.ts; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. Agent-controlled browser validation confirms there is no visible `Add layer` action in the Layers panel.
+- Skipped checks: Full performance suite is not required for this post-first-working presentation edit.
+- Risks: None: uploaded media still creates layers through the existing import workflow.
+
+### Iteration 16 — Multiple-image upload copy
+
+- Request: Make the Source uploader copy state that users can upload multiple images.
+- Task type: Runtime uploader copy refinement.
+- Verification tier: Tier 1.
+- Reason: The change adjusts visible multi-file wording only; schema, import behavior, renderer, canvas, exports, and performance are unchanged.
+- User-visible result: The Source empty state now says “Click to upload images” and “or drag them onto the canvas,” accurately reflecting its multi-select behavior.
+- Source/reference checked: User-provided Source uploader screenshot and file-drop-control.tsx multi-select behavior.
+- Reference inputs: Screenshot 2026-07-26 at 6.46.38 PM.png.
+- Docs/contracts read: workflow.md; decision-contract.md; acceptance-testing.md; required brainstorming and writing-plans workflow skills.
+- Contract rules applied: runtime-shell-required; controls-product-coverage; workflow-required.
+- Decision: Make the shared built-in uploader plural-aware whenever `multiple` is enabled, rather than overlaying app-specific copy around a runtime-owned control.
+- Alternatives rejected: A schema description renders as label help rather than the requested empty-state copy; app-level DOM replacement would duplicate a runtime-owned control surface.
+- State/output mapping: `multiple: true` selects plural uploader nouns and pronouns; no product state changes.
+- Files changed: src/toolcraft/ui/components/controls/file-drop/file-drop-control.tsx; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. Agent-controlled browser validation confirms the Source panel visibly says “Click to upload images” and “or drag them onto the canvas.”
+- Skipped checks: Full performance suite is not required for this post-first-working copy edit.
+- Risks: None: single-file uploader copy remains unchanged.
+
+### Iteration 15 — Visible Layers capacity notice
+
+- Request: Show a visible disclaimer in the Layers panel once five images have been uploaded.
+- Task type: Layers-panel feedback refinement.
+- Verification tier: Tier 1.
+- Reason: The change adds a presentation-only status message to the existing runtime-owned Layers panel; media cap, schema, renderer, canvas geometry, export, and performance behavior are unchanged.
+- User-visible result: At the five-image limit, a notice directly below the Layers header reads: “Limit reached — 5 of 5 images uploaded. Delete an image to add another.” The notice disappears after an image is removed.
+- Source/reference checked: User-provided Layers screenshot, existing capacity guard in use-selected-object.ts, and existing Layers browser coverage.
+- Reference inputs: Screenshot 2026-07-26 at 6.43.43 PM.png.
+- Docs/contracts read: workflow.md; decision-contract.md; acceptance-testing.md; required brainstorming and writing-plans workflow skills.
+- Contract rules applied: panel-host-behavior; layers-enabled-behavior; workflow-required.
+- Decision: Add one app-owned status element adjacent to the runtime-owned Layers header only while the existing capacity guard is active. It does not replace or recompose the Layers panel.
+- Alternatives rejected: A header `title` tooltip is discoverable only on hover and was not visible in the reported UI; adding canvas text would violate the canvas product-output boundary; changing the runtime panel globally is unnecessary for this app-specific five-object rule.
+- State/output mapping: `getObjectLayers(state).length >= MAX_CANVAS_OBJECTS` controls the notice lifecycle, upload disablement, and existing Layers header tooltip.
+- Files changed: src/app/use-selected-object.ts; src/styles.css; e2e/app-multi-object.spec.ts; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. Agent-controlled browser validation selected five source files in one action and confirmed one visible Layers-panel notice with the exact capacity message.
+- Skipped checks: Full performance suite is not required for this post-first-working presentation edit.
+- Risks: None: the message is scoped to the existing capacity state and removed when capacity becomes available.
+
+### Iteration 14 — Batch image upload and grid placement
+
+- Request: Allow selecting up to five images in one upload and do not stack the resulting objects.
+- Task type: Media import and canvas-object placement behavior.
+- Verification tier: Tier 3.
+- Reason: The change affects built-in fileDrop import behavior and the initial geometry of custom-rendered canvas objects, while preserving the existing five-object capacity and renderer pipeline.
+- User-visible result: A user can select up to five images in one file-picker action. Each imported image begins in its own padded canvas slot, without overlapping another newly imported image.
+- Source/reference checked: src/app/app-schema.ts Source fileDrop, src/app/use-selected-object.ts import seeding, e2e/app-multi-object.spec.ts, component-rules.md multi-image fileDrop guidance, and the existing five-object performance fixture.
+- Reference inputs: None.
+- Docs/contracts read: workflow.md; schema-reference.md; component-rules.md; acceptance-testing.md; performance.md; required brainstorming and writing-plans workflow skills.
+- Contract rules applied: layers-enabled-behavior; controls-product-coverage; canvas-no-app-ui; renderer-technique-inventory; acceptance-product-observable; performance-coverage-levels.
+- Decision: Declare `multiple: true` on the runtime-owned file-mode Source fileDrop, so its standard sortable file rows own batch selection and reorder. Seed uninitialized image layers into a responsive three-column, two-row padded grid, using the existing image aspect-fit limits and the product's five-object cap. Compose object layers in runtime media order so file-row reorder updates the rendered scene without duplicate ordering state.
+- Alternatives rejected: Rebuilding a custom multi-upload surface would violate the runtime-shell boundary; retaining the 48px cascade would technically offset images but still makes batch uploads appear stacked; changing the five-object cap would alter the established renderer workload.
+- State/output mapping: The Source fileDrop appends up to five `source.image` assets; runtime media order maps to object compositing order; `computeSeedRect` maps each new layer index to a non-overlapping grid position; existing `obj.<layerId>.x/y/w/h` geometry drives canvas preview and export composition.
+- Files changed: src/app/app-schema.ts; src/app/use-selected-object.ts; src/app/app-schema.test.ts; src/app/app-acceptance.ts; e2e/app-multi-object.spec.ts; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run verify:quick` passed (261 tests). Agent-controlled browser validation used one chooser action with five source files and confirmed `multiple: true`, five created Layers entries, and the uploader disabled at the five-object cap. The shared `computeSeedRect` unit test proves the five initial raster-image bounds are pairwise non-overlapping at the default 2560×1440 canvas. The SVG favicon fixture did not decode into the ASCII raster canvas, so the browser check used Layers/import behavior while geometry proof remains deterministic in the app test.
+- Skipped checks: Full performance suite is not required for this post-first-working feature loop; the existing five-object composite workload and quality limits are unchanged.
+- Risks: Risk: manually resized or moved objects retain their user-authored geometry; only previously unseeded imports receive grid placement.
+
+### Iteration 13 — Favicon in desktop guidance
+
+- Request: Use the existing favicon as the mobile desktop-guidance icon.
+- Task type: Responsive route visual refinement.
+- Verification tier: Tier 1.
+- Reason: The change swaps a decorative asset in an existing route-level presentation only; Toolcraft runtime state, schema, canvas output, controls, export, timeline, layers, and renderer workload remain unchanged.
+- User-visible result: The mobile desktop-guidance card uses the same favicon as the browser tab rather than a text symbol.
+- Source/reference checked: public/favicon.svg (64×64 scalable SVG with a 64×64 viewBox), index.html favicon declaration, and the existing mobile notice markup/styles.
+- Reference inputs: Project favicon only.
+- Docs/contracts read: workflow.md; assembly-workflow.md; decision-contract.md; required brainstorming and writing-plans workflow skills.
+- Contract rules applied: runtime-shell-required; canvas-no-app-ui; workflow-required.
+- Decision: Render `/favicon.svg` as a decorative empty-alt image at the existing 48px square size. The SVG viewBox preserves crisp rendering at this size and higher-density screens.
+- Alternatives rejected: Retaining the text glyph would not match the product identity; rasterizing the SVG would add a fixed-resolution asset without any benefit.
+- State/output mapping: Static route markup references the existing public favicon. No runtime or product state is affected.
+- Files changed: src/routes/index.tsx; src/styles.css; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. Agent-controlled browser verification at 390×844 confirms one mobile-notice image with `/favicon.svg`; it has native 64×64 SVG dimensions and renders at 48×48 CSS pixels.
+- Skipped checks: Full performance suite is not required for this post-first-working visual refinement.
+- Risks: None: the SVG is natively scalable and served from the existing public asset path.
+
+### Iteration 12 — Desktop-first mobile guidance
+
+- Request: Prompt visitors on phone-sized devices to use the desktop experience.
+- Task type: Responsive route presentation.
+- Verification tier: Tier 1.
+- Reason: The change adds a visual route-level state at a viewport breakpoint; Toolcraft runtime state, schema, canvas output, controls, export, timeline, layers, and renderer workload are unchanged.
+- User-visible result: At widths below 768px, visitors see a focused message: “Best experienced on desktop,” explaining that ASCII Image Tool is designed for larger screens and asking them to continue on a desktop or laptop. At 768px and above, the normal Toolcraft workspace remains available.
+- Source/reference checked: src/routes/index.tsx, src/styles.css, and the existing Toolcraft workspace composition.
+- Reference inputs: None.
+- Docs/contracts read: workflow.md; assembly-workflow.md; decision-contract.md; acceptance-testing.md; required brainstorming, writing-plans, and browser workflow skills.
+- Contract rules applied: runtime-shell-required; canvas-no-app-ui; canvas-surface-preserved; workflow-required.
+- Decision: Use a CSS media-query gate around the existing route-owned ToolcraftApp. The mobile notice lives outside canvasContent and hides the workspace only on phone-width viewports, preserving the runtime shell and all desktop behavior.
+- Alternatives rejected: Shrinking the full editor into a phone layout would make the dense canvas and controls difficult to use; adding this text inside canvasContent would violate the product-output-only canvas contract; changing Toolcraft runtime responsive behavior would be an unnecessary global change.
+- State/output mapping: Viewport width selects the visible route presentation only. No runtime state, product output, or export bytes change.
+- Files changed: src/routes/index.tsx; src/styles.css; e2e/app-browser-acceptance.spec.ts; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. `npm run test` passed (260 tests). Agent-controlled browser verification against the local server passed: at 390×844, the “Best experienced on desktop” notice is visible and the workspace has computed `display: none`; at 1280×900, the notice is absent and the `Canvas viewport` application landmark is visible. The focused fallback Playwright command could not acquire a second free port while the existing app server was running, so the live app was verified directly instead.
+- Skipped checks: Full performance suite is not required for this post-first-working, non-performance presentation edit.
+- Risks: Risk: compact tablets below 768px receive the desktop guidance; the breakpoint intentionally favors a reliably usable editor surface over a cramped workspace.
+
 ### Iteration 1 — Product build
 
 - Request: Build an app that applies an ASCII effect to an uploaded image.

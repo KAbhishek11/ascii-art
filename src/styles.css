@@ -91,6 +91,84 @@ body,
   overflow: clip;
 }
 
+.desktop-experience-notice {
+  display: none;
+}
+
+.toolcraft-image-upload-limit-notice {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-block: 1px solid color-mix(in oklab, var(--attention) 24%, transparent);
+  background: color-mix(in oklab, var(--attention) 10%, transparent);
+  color: color-mix(in oklab, var(--foreground) 88%, var(--attention));
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+[data-toolcraft-layers-panel] [aria-label="Add layer"] {
+  display: none;
+}
+
+.desktop-experience-upload-help {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+}
+
+.desktop-experience-upload-help-tooltip {
+  animation-duration: 30ms;
+}
+
+@media (max-width: 767px) {
+  .desktop-experience-gate {
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+    background:
+      radial-gradient(circle at 50% 0%, color-mix(in oklab, var(--primary) 20%, transparent), transparent 48%),
+      var(--background);
+  }
+
+  .desktop-experience-workspace {
+    display: none;
+  }
+
+  .desktop-experience-notice {
+    display: grid;
+    width: min(100%, 25rem);
+    gap: 1rem;
+    padding: 2rem;
+    border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent);
+    border-radius: 1rem;
+    background: color-mix(in oklab, var(--card) 88%, transparent);
+    box-shadow: 0 1.5rem 4rem color-mix(in oklab, black 45%, transparent);
+    text-align: center;
+  }
+
+  .desktop-experience-notice__mark {
+    width: 3rem;
+    height: 3rem;
+    margin: 0 auto 0.25rem;
+  }
+
+  .desktop-experience-notice h1 {
+    margin: 0;
+    font-size: 1.25rem;
+    line-height: 1.4;
+    letter-spacing: -0.02em;
+  }
+
+  .desktop-experience-notice p {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+}
+
 input,
 button {
   font-family: inherit;

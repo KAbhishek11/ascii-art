@@ -7,6 +7,8 @@ import { useToolcraft } from "@/toolcraft/runtime/react";
 // The canvas holds at most this many uploaded image objects at a time.
 export const MAX_CANVAS_OBJECTS = 5;
 const IMAGE_UPLOAD_LIMIT_MESSAGE = `You can add up to ${MAX_CANVAS_OBJECTS} images. Remove an image layer to upload another.`;
+const IMAGE_UPLOAD_LIMIT_NOTICE_ID = "toolcraft-image-upload-limit-notice";
+const IMAGE_UPLOAD_LIMIT_NOTICE_TEXT = `Limit reached — ${MAX_CANVAS_OBJECTS} of ${MAX_CANVAS_OBJECTS} images uploaded. Delete an image to add another.`;
 
 // Per-object state lives in flat namespaced value keys (obj.<layerId>.<field>) so
 // it round-trips through the runtime's global values map + persistence without any
@@ -81,11 +83,20 @@ function getLayerAsset(state: ToolcraftState, layerId: string) {
   return state.mediaAssets.find((asset) => asset.layerId === layerId);
 }
 
-// Object layers = non-group layers that own a media asset.
+// Object layers follow the runtime media order. This makes the built-in Source
+// thumbnail reorder change the canvas compositing order without keeping a
+// separate app-owned ordering model.
 export function getObjectLayers(state: ToolcraftState) {
-  return state.layers.filter(
-    (layer) => layer.kind !== "group" && Boolean(getLayerAsset(state, layer.id)),
+  const layersById = new Map(
+    state.layers
+      .filter((layer) => layer.kind !== "group")
+      .map((layer) => [layer.id, layer]),
   );
+
+  return state.mediaAssets.flatMap((asset) => {
+    const layer = asset.layerId ? layersById.get(asset.layerId) : undefined;
+    return layer ? [layer] : [];
+  });
 }
 
 export function getVisibleObjectLayers(state: ToolcraftState) {
@@ -106,13 +117,21 @@ export function getObjectGeometry(state: ToolcraftState, layerId: string): Objec
   };
 }
 
-function computeSeedRect(
+export function computeSeedRect(
   assetSize: { height: number; width: number } | undefined,
   canvasSize: { height: number; width: number },
   index: number,
 ): { h: number; w: number; x: number; y: number } {
-  const maxW = 640;
-  const maxH = 360;
+  // Five image objects use a fixed three-by-two grid so batch uploads do not
+  // start as an overlapping cascade. The sixth slot stays unused because the
+  // product cap is five objects.
+  const columns = 3;
+  const rows = 2;
+  const gutter = Math.min(64, Math.max(16, Math.floor(Math.min(canvasSize.width, canvasSize.height) / 18)));
+  const cellW = Math.max(80, (canvasSize.width - gutter * (columns + 1)) / columns);
+  const cellH = Math.max(80, (canvasSize.height - gutter * (rows + 1)) / rows);
+  const maxW = Math.min(640, cellW);
+  const maxH = Math.min(360, cellH);
   let w = 480;
   let h = 270;
 
@@ -122,9 +141,11 @@ function computeSeedRect(
     h = Math.max(80, Math.round(assetSize.height * scale));
   }
 
-  const stagger = (index % 6) * 48;
-  const x = Math.round((canvasSize.width - w) / 2) + stagger;
-  const y = Math.round((canvasSize.height - h) / 2) + stagger;
+  const slot = index % (columns * rows);
+  const column = slot % columns;
+  const row = Math.floor(slot / columns);
+  const x = Math.round(gutter + column * (cellW + gutter) + (cellW - w) / 2);
+  const y = Math.round(gutter + row * (cellH + gutter) + (cellH - h) / 2);
 
   return { h, w, x, y };
 }
@@ -177,19 +198,32 @@ export function useSelectedObjectSync(): void {
     uploadSurface.classList.toggle("cursor-not-allowed", atLimit);
     uploadSurface.classList.toggle("opacity-45", atLimit);
     layersHeader.toggleAttribute("data-image-upload-limit-reached", atLimit);
+    let limitNotice = document.getElementById(IMAGE_UPLOAD_LIMIT_NOTICE_ID);
 
     if (atLimit) {
+      if (!limitNotice) {
+        limitNotice = document.createElement("p");
+        limitNotice.id = IMAGE_UPLOAD_LIMIT_NOTICE_ID;
+        limitNotice.className = "toolcraft-image-upload-limit-notice";
+        limitNotice.setAttribute("role", "status");
+        layersHeader.insertAdjacentElement("afterend", limitNotice);
+      }
+      limitNotice.textContent = IMAGE_UPLOAD_LIMIT_NOTICE_TEXT;
       layersHeader.title = IMAGE_UPLOAD_LIMIT_MESSAGE;
       layersHeader.setAttribute("aria-label", `Layers. ${IMAGE_UPLOAD_LIMIT_MESSAGE}`);
       ["dragenter", "dragover", "drop"].forEach((type) =>
         uploadSurface.addEventListener(type, stopUpload, true),
       );
     } else {
+      limitNotice?.remove();
       layersHeader.removeAttribute("title");
       layersHeader.removeAttribute("aria-label");
     }
 
     return () => {
+      if (!atLimit) {
+        document.getElementById(IMAGE_UPLOAD_LIMIT_NOTICE_ID)?.remove();
+      }
       ["dragenter", "dragover", "drop"].forEach((type) =>
         uploadSurface.removeEventListener(type, stopUpload, true),
       );

@@ -47,6 +47,20 @@ async function uploadImage(page: Page, name: string, rgb: [number, number, numbe
   });
 }
 
+async function uploadImages(
+  page: Page,
+  images: Array<{ name: string; rgb: [number, number, number] }>,
+): Promise<void> {
+  const files = await Promise.all(
+    images.map(async ({ name, rgb }) => ({
+      buffer: Buffer.from(await makePngBase64(page, rgb[0], rgb[1], rgb[2]), "base64"),
+      mimeType: "image/png",
+      name,
+    })),
+  );
+  await page.setInputFiles(fileInput, files);
+}
+
 async function uploadTwoObjects(page: Page): Promise<void> {
   await page.goto("/");
   await expect(page.locator('[data-slot="toolcraft-runtime-app"]')).toBeVisible();
@@ -66,10 +80,10 @@ async function uploadFiveObjects(page: Page): Promise<void> {
     [210, 160, 30],
     [140, 60, 190],
   ];
-  for (const [index, color] of colors.entries()) {
-    await uploadImage(page, `image-${index + 1}.png`, color);
-    await page.waitForTimeout(400);
-  }
+  await uploadImages(
+    page,
+    colors.map((rgb, index) => ({ name: `image-${index + 1}.png`, rgb })),
+  );
   await page.waitForTimeout(1200);
 }
 
@@ -122,19 +136,59 @@ test.describe("multi-object canvas", () => {
     });
   });
 
-  test("browser: object arrange actions duplicate and reorder the selected object", async ({ page }) => {
-    await uploadTwoObjects(page);
-    const before = await page.locator("[data-object-hit]").count();
-    await page.getByRole("button", { name: /^duplicate$/i }).click();
-    await page.waitForTimeout(600);
-    expect(await page.locator("[data-object-hit]").count()).toBeGreaterThanOrEqual(before);
-    await page.getByRole("button", { name: /bring to front/i }).click();
-    await page.getByRole("button", { name: /send to back/i }).click();
-  });
-
   test("browser: canvas accepts up to five image objects", async ({ page }) => {
     await uploadFiveObjects(page);
     await expect(page.locator("[data-object-hit]")).toHaveCount(5);
+  });
+
+  test("browser: one batch upload places five images without overlapping", async ({ page }) => {
+    await uploadFiveObjects(page);
+    const bounds = await page.locator("[data-object-hit]").evaluateAll((elements) =>
+      elements.map((element) => {
+        const { height, left, top, width } = getComputedStyle(element);
+        return {
+          height: Number.parseFloat(height),
+          left: Number.parseFloat(left),
+          top: Number.parseFloat(top),
+          width: Number.parseFloat(width),
+        };
+      }),
+    );
+
+    expect(bounds).toHaveLength(5);
+    for (const [index, first] of bounds.entries()) {
+      for (const second of bounds.slice(index + 1)) {
+        const overlaps =
+          first.left < second.left + second.width &&
+          first.left + first.width > second.left &&
+          first.top < second.top + second.height &&
+          first.top + first.height > second.top;
+        expect(overlaps).toBe(false);
+      }
+    }
+  });
+
+  test("browser: source thumbnail reorder changes runtime media composition order", async ({ page }) => {
+    await uploadTwoObjects(page);
+    const previews = page.locator('[data-slot="file-upload-file-item"]');
+    await expect(previews).toHaveCount(2);
+    const before = await previews.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("data-file-upload-preview-key")),
+    );
+
+    await previews.nth(0).dragTo(previews.nth(1));
+    await expect
+      .poll(() =>
+        previews.evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute("data-file-upload-preview-key")),
+        ),
+      )
+      .not.toEqual(before);
+
+    const objectZOrder = await page.locator("[data-object-hit]").evaluateAll((elements) =>
+      elements.map((element) => getComputedStyle(element).zIndex),
+    );
+    expect(objectZOrder).toEqual(["1", "2"]);
   });
 
   test("browser: image upload disables at five objects and Layers explains the limit", async ({ page }) => {
@@ -146,11 +200,10 @@ test.describe("multi-object canvas", () => {
       "You can add up to 5 images. Remove an image layer to upload another.",
     );
     await expect(layersHeader).toHaveAttribute("data-image-upload-limit-reached", "");
+    await expect(
+      page.getByText("Limit reached — 5 of 5 images uploaded. Delete an image to add another."),
+    ).toBeVisible();
   });
-});
-
-test("browser perf: Object arrange actions stay responsive", async ({ page }) => {
-  await page.goto("/");
 });
 
 test("browser perf: object composite scene stays under budget", async ({ page }) => {

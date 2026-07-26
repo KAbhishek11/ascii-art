@@ -376,13 +376,13 @@ export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
     componentType: "fileDrop",
     evidence: "media-lifecycle",
     expectedObservable:
-      "Uploading a source image creates ASCII canvas output; clearing removes the source, and global reset removes uploaded source media.",
+      "Uploading source images creates ASCII canvas output; reordering thumbnails updates runtime media order and the renderer's compositing order, while clearing and global reset remove uploaded source media.",
     fixture: "high-contrast SVG source image",
     id: "source.image",
     kind: "control",
     target: "source.image",
     userAction:
-      "Upload an image, verify the ASCII canvas output updates, clear/remove it, then use Reset controls to remove uploaded source media because there is no default asset.",
+      "Upload source images, drag thumbnails to reorder their runtime media order and verify the renderer changes compositing order, then clear/remove them and use Reset controls to remove uploaded source media because there is no default asset.",
   },
   {
     automated: true,
@@ -698,23 +698,6 @@ export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
     target: "actions.output",
     userAction:
       "Click Export PNG and verify pending progress appears before decoded bytes are downloaded.",
-  },
-  {
-    automated: true,
-    automatedTestName: "acceptance: object arrange actions duplicate and reorder the selected object",
-    browser: true,
-    browserTestName: "browser: object arrange actions duplicate and reorder the selected object",
-    componentType: "actions",
-    evidence: "command-side-effect",
-    expectedObservable:
-      "In the Object section, Duplicate clones the selected object as a new offset selected layer, and Bring to front / Send to back change the selected object's composite z-order via layers.reorder.",
-    fixture: "two uploaded image objects with one selected",
-    id: "actions.object",
-    actionCoverage: ["object-duplicate", "object-front", "object-back"],
-    kind: "control",
-    target: "actions.object",
-    userAction:
-      "Select an object, click Duplicate to clone it, then Bring to front and Send to back to change its composite z-order, verifying the layer list and canvas stacking update.",
   },
   {
     automated: true,
