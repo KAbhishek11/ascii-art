@@ -631,6 +631,7 @@ export function AsciiImageRenderer(): React.JSX.Element {
   const zoom = state.canvas.zoom || 100;
   const visibleLayers = getVisibleObjectLayers(state);
   const selectedLayerId = state.selectedLayerId;
+  const exportSelectedLayerIds = new Set(getSelectedExportLayerIds(state));
 
   // Scene signature — recomposite whenever any input to the canvas changes.
   const sceneSignature = [
@@ -747,6 +748,18 @@ export function AsciiImageRenderer(): React.JSX.Element {
 
   const beginMove = (layerId: string) => (event: React.PointerEvent) => {
     event.stopPropagation();
+    if (event.shiftKey) {
+      event.preventDefault();
+      const nextSelection = new Set(getSelectedExportLayerIds(stateRef.current));
+      if (nextSelection.has(layerId)) {
+        nextSelection.delete(layerId);
+      } else {
+        nextSelection.add(layerId);
+      }
+      dispatch({ target: "export.selection", type: "controls.setValue", value: [...nextSelection] });
+      dispatch({ layerId, type: "layers.select" });
+      return;
+    }
     if (state.selectedLayerId !== layerId) {
       dispatch({ layerId, type: "layers.select" });
     }
@@ -1006,6 +1019,29 @@ export function AsciiImageRenderer(): React.JSX.Element {
         );
       })}
 
+      {visibleLayers
+        .filter((layer) => exportSelectedLayerIds.has(layer.id) && layer.id !== selectedLayerId)
+        .map((layer) => {
+          const g = getObjectGeometry(state, layer.id);
+          return (
+            <div
+              aria-hidden="true"
+              data-export-selected={layer.id}
+              key={`export-selected-${layer.id}`}
+              style={{
+                border: "1.5px dashed color-mix(in oklab, var(--link) 72%, transparent)",
+                height: g.h,
+                left: g.x,
+                pointerEvents: "none",
+                position: "absolute",
+                top: g.y,
+                width: g.w,
+                zIndex: 999,
+              }}
+            />
+          );
+        })}
+
       {/* Selection outline + handles for the selected object. */}
       {selectedGeom && selectedIsObject ? (
         <div
@@ -1145,10 +1181,60 @@ export function AsciiImageRenderer(): React.JSX.Element {
 
 type ResolvedExportSource = { layerId: string; source: AsciiRenderSource };
 
-async function resolveExportSources(state: ToolcraftState): Promise<Map<string, AsciiRenderSource>> {
+function getExportLayers(state: ToolcraftState, layerIds: readonly string[]) {
+  const wanted = new Set(layerIds);
+  return getVisibleObjectLayers(state).filter((layer) => wanted.has(layer.id));
+}
+
+export function getSelectedExportLayerIds(state: ToolcraftState): string[] {
+  const selected = state.values["export.selection"];
+  const available = new Set(getVisibleObjectLayers(state).map((layer) => layer.id));
+  const explicitSelection = Array.isArray(selected)
+    ? selected.filter((layerId): layerId is string => typeof layerId === "string" && available.has(layerId))
+    : [];
+  if (explicitSelection.length > 0) {
+    return explicitSelection;
+  }
+  return state.selectedLayerId && available.has(state.selectedLayerId) ? [state.selectedLayerId] : [];
+}
+
+export function createSelectedLayerExportState(
+  state: ToolcraftState,
+  layerId: string,
+): ToolcraftState {
+  const layer = getVisibleObjectLayers(state).find((item) => item.id === layerId);
+  if (!layer) {
+    throw new Error("Select a visible image before exporting ASCII output.");
+  }
+
+  const geometry = getObjectGeometry(state, layerId);
+  const values: Record<string, unknown> = {
+    ...state.values,
+    [objectValueKey(layerId, "h")]: geometry.h,
+    [objectValueKey(layerId, "w")]: geometry.w,
+    [objectValueKey(layerId, "x")]: 0,
+    [objectValueKey(layerId, "y")]: 0,
+  };
+
+  return {
+    ...state,
+    canvas: {
+      ...state.canvas,
+      size: { ...state.canvas.size, height: geometry.h, width: geometry.w },
+    },
+    layers: state.layers.filter((item) => item.id === layerId),
+    mediaAssets: state.mediaAssets.filter((asset) => asset.layerId === layerId),
+    values,
+  };
+}
+
+async function resolveExportSources(
+  state: ToolcraftState,
+  layerIds: readonly string[],
+): Promise<Map<string, AsciiRenderSource>> {
   const map = new Map<string, AsciiRenderSource>();
   const entries = await Promise.all(
-    getVisibleObjectLayers(state).map(async (layer): Promise<ResolvedExportSource | null> => {
+    getExportLayers(state, layerIds).map(async (layer): Promise<ResolvedExportSource | null> => {
       const asset = getLayerAsset(state, layer.id);
       if (!asset) {
         return null;
@@ -1165,11 +1251,17 @@ async function resolveExportSources(state: ToolcraftState): Promise<Map<string, 
   return map;
 }
 
-export async function createAsciiExportCanvas(state: ToolcraftState): Promise<HTMLCanvasElement> {
-  if (getVisibleObjectLayers(state).length === 0) {
-    throw new Error("Upload an image before exporting ASCII output.");
+export async function createAsciiExportCanvas(
+  state: ToolcraftState,
+  layerIds = getSelectedExportLayerIds(state),
+): Promise<HTMLCanvasElement> {
+  const exportLayers = getExportLayers(state, layerIds);
+  if (exportLayers.length !== 1) {
+    throw new Error("Export exactly one visible image at a time.");
   }
-  const sources = await resolveExportSources(state);
+  const layerId = exportLayers[0]!.id;
+  const exportState = createSelectedLayerExportState(state, layerId);
+  const sources = await resolveExportSources(state, [layerId]);
   const background = readColor(state.values["appearance.background"], "#101010");
   const includeBackground = state.values["export.includeBackground"] !== false;
 
@@ -1177,47 +1269,34 @@ export async function createAsciiExportCanvas(state: ToolcraftState): Promise<HT
     background,
     includeBackground,
     resolution: readString(state.values["export.image.resolution"], "4k"),
-    state,
-    render({ canvas, pixelWidth, cssWidth }) {
-      // Scale object geometry from artboard px to export px.
-      const scale = cssWidth > 0 ? pixelWidth / cssWidth : 1;
+    state: exportState,
+    render({ canvas, cssHeight, cssWidth }) {
       const cache = new Map<string, BitmapCacheEntry>();
-      const exportState: ToolcraftState = {
-        ...state,
-        canvas: {
-          ...state.canvas,
-          size: { ...state.canvas.size, height: canvas.height, width: canvas.width },
-        },
-      };
-      // Compose directly at export pixel size: temporarily scale geometry values.
-      const scaledValues: Record<string, unknown> = { ...state.values };
-      for (const layer of getVisibleObjectLayers(state)) {
-        const g = getObjectGeometry(state, layer.id);
-        scaledValues[objectValueKey(layer.id, "x")] = g.x * scale;
-        scaledValues[objectValueKey(layer.id, "y")] = g.y * scale;
-        scaledValues[objectValueKey(layer.id, "w")] = g.w * scale;
-        scaledValues[objectValueKey(layer.id, "h")] = g.h * scale;
-      }
-      exportState.values = scaledValues;
       compositeAsciiScene({
         cache,
         canvas,
-        cssHeight: canvas.height,
-        cssWidth: canvas.width,
+        cssHeight,
+        cssWidth,
         deviceScale: 1,
         resolveSource: (layerId) => sources.get(layerId),
         state: exportState,
       });
-      // createToolcraftPngExportCanvas already fills the background + scales the
-      // context by pixelRatio; reset our own transform contribution.
-      void includeBackground;
     },
   });
 }
 
-export async function exportAsciiImage(state: ToolcraftState): Promise<void> {
-  const canvas = await createAsciiExportCanvas(state);
-  const format = readString(state.values["export.image.format"], "png");
+function getExportFileStem(state: ToolcraftState, layerId: string, index: number): string {
+  const sourceName = getLayerAsset(state, layerId)?.fileName ?? `image-${index + 1}`;
+  const withoutExtension = sourceName.replace(/\.[^.]+$/, "");
+  const safeName = withoutExtension.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "");
+  return safeName || `image-${index + 1}`;
+}
+
+async function downloadAsciiCanvas(
+  canvas: HTMLCanvasElement,
+  format: string,
+  fileStem: string,
+): Promise<void> {
   const mimeType = format === "jpg" ? "image/jpeg" : "image/png";
   const extension = format === "jpg" ? "jpg" : "png";
   const blob = await new Promise<Blob>((resolve, reject) => {
@@ -1236,7 +1315,25 @@ export async function exportAsciiImage(state: ToolcraftState): Promise<void> {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `ascii-image.${extension}`;
+  link.download = `ascii-${fileStem}.${extension}`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+export async function exportAsciiImages(
+  state: ToolcraftState,
+  reportProgress?: (progress: number) => void,
+): Promise<void> {
+  const layerIds = getSelectedExportLayerIds(state);
+  if (layerIds.length === 0) {
+    throw new Error("Select at least one visible image before exporting ASCII output.");
+  }
+
+  const format = readString(state.values["export.image.format"], "png");
+  for (const [index, layerId] of layerIds.entries()) {
+    reportProgress?.(index / layerIds.length);
+    const canvas = await createAsciiExportCanvas(state, [layerId]);
+    await downloadAsciiCanvas(canvas, format, getExportFileStem(state, layerId, index));
+    reportProgress?.((index + 1) / layerIds.length);
+  }
 }

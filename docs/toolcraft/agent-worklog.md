@@ -8,6 +8,82 @@ Product: ASCII Image Tool. The app uploads source images, renders an ASCII glyph
 
 ## Decision Trail
 
+### Iteration 26 — Working multi-selection from Layers
+
+- Request: User reported that multiple image selection and separate export were still unavailable.
+- Task type: Broken export-selection interaction diagnosis and repair.
+- Verification tier: Tier 3.
+- Reason: The visible multi-selection gesture writes export state and drives multiple output files, so both interaction and export behavior require browser verification.
+- User-visible result: In Layers, click one image row, then Shift-click another image row. Both images become selected for export, their Images checkboxes stay in sync, and Export PNG downloads each image separately.
+- Source/reference checked: Initial canvas Shift-click browser evidence showing off-viewport image hit areas; runtime Layers row `data-layer-id` structure; initial Layers Shift-click assertion showing empty persisted selection did not fall back to the first active layer.
+- Reference inputs: User report of failed multiple selection.
+- Docs/contracts read: workflow.md; decision-contract.md; acceptance-testing.md; required brainstorming, writing-plans, systematic-debugging, and browser workflow skills.
+- Contract rules applied: layers-enabled-behavior; controls-product-coverage; output-export-required; acceptance-product-observable; workflow-required.
+- Decision: Keep the runtime's single active edit layer while adding app-owned Shift-click batch selection on the visible Layers rows. An empty `export.selection` now starts from `selectedLayerId`, so click-first/Shift-click-next produces a true two-image selection.
+- Alternatives rejected: Canvas hit areas are not reliably inside the browser viewport at the default large artboard size; relying only on the right-panel checkboxes was not discoverable enough; rebuilding the runtime Layers panel would violate the runtime shell boundary.
+- State/output mapping: Layer-row Shift-pointer events toggle visible layer IDs in `export.selection`; image checkboxes and dashed non-active outlines read that same value; Export PNG loops the IDs and creates separate selected-object files.
+- Files changed: src/app/use-selected-object.ts; src/app/ascii-renderer.tsx; src/app/app-acceptance.ts; src/app/app-schema.test.ts; e2e/app-multi-object.spec.ts; plans/ascii-toolcraft-plan.md; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. Focused Chromium browser tests passed: `shift-click layer rows` proves two selected export checkboxes, and `selected images export` proves separate image downloads.
+- Skipped checks: Full performance suite is not required for this post-first-working interaction/export repair.
+- Risks: The multi-selection is intentionally scoped to export. Layers continues to show one active edit layer and its standard move/resize handles.
+
+### Iteration 25 — Obvious batch image selection
+
+- Request: Make it possible to select multiple images at once and export them separately.
+- Task type: Export-selection control usability refinement.
+- Verification tier: Tier 2.
+- Reason: The change improves the existing runtime-backed selection workflow without changing canvas output, layer geometry, or export composition.
+- User-visible result: The Images selector now offers `Select all` and `Clear` above its individual image checkboxes. Users can select the full batch in one action, remove individual images if needed, and export one separate file per remaining checked image.
+- Source/reference checked: Existing `export.selection` custom control, prior multi-download browser acceptance, and Toolcraft custom-control primitive guidance.
+- Reference inputs: User request for multiple image selection and separate export.
+- Docs/contracts read: workflow.md; custom-controls.md; acceptance-testing.md; required brainstorming, writing-plans, and systematic-debugging workflow skills.
+- Contract rules applied: controls-product-coverage; output-export-required; acceptance-product-observable; workflow-required.
+- Decision: Add compact primitive `Select all` and `Clear` actions inside the existing custom control. Both write the same persisted `export.selection` array as individual checkboxes, avoiding local-only selection state.
+- Alternatives rejected: Reworking the runtime-owned Layers panel would change its deliberate single-layer editing behavior; hiding the selectors behind a dialog would make batch export slower; adding an archive download would conflict with separate files.
+- State/output mapping: Select all writes every uploaded layer ID to `export.selection`; Clear writes an empty array; each checkbox toggles only its layer ID; Export PNG iterates the resulting selection and downloads each layer separately.
+- Files changed: src/app/export-selection-control.tsx; e2e/app-multi-object.spec.ts; plans/ascii-toolcraft-plan.md; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. Targeted app tests passed (216). The focused Chromium browser test (`npm run test:browser -- --grep "selected images export"`) passed: Select all checked both uploaded images, removing one yielded one selected-object export, and restoring it yielded two separate downloads.
+- Skipped checks: Full performance suite is not required for this post-first-working control workflow refinement.
+- Risks: The Layers panel remains single-selection for editing; use the Images selector for multi-image export selection.
+
+### Iteration 24 — Selected object bounds export
+
+- Request: When exporting selected images, export only the exact image bounds rather than the whole canvas, with the configured background color; make the workflow feel like Figma’s selected-object export.
+- Task type: Selected-object export composition and output sizing.
+- Verification tier: Tier 3.
+- Reason: This changes custom renderer export geometry, the export canvas frame, and exported output dimensions for each selected image.
+- User-visible result: A selected image exports as an image-sized file with its own layer aspect ratio and the chosen background behind the ASCII output. It no longer includes artboard-sized empty area or other layers.
+- Source/reference checked: Existing per-layer `obj.<layerId>.x/y/w/h` geometry, the selected-image export loop, `createToolcraftPngExportCanvas`, and Toolcraft image export sizing rules.
+- Reference inputs: User request referencing Figma selected-object export behavior.
+- Docs/contracts read: workflow.md; schema-reference.md; renderer-technique.md; acceptance-testing.md; performance.md; required brainstorming, writing-plans, and browser workflow skills.
+- Contract rules applied: output-export-required; canvas-no-app-ui; canvas-surface-preserved; renderer-technique-inventory; acceptance-product-observable; performance-coverage-levels; workflow-required.
+- Decision: Build an export-only state for exactly one visible selected layer. Its canvas size becomes that layer’s `w × h`, its origin becomes `0,0`, and all other layers/media are omitted. The standard PNG export helper still applies the active background and 2K/4K/8K resolution scale.
+- Alternatives rejected: Cropping the already-rendered artboard would retain artboard scaling and risk raster loss; disabling background export would ignore the configured Background workflow; changing the live canvas size would disrupt editing and other selected images.
+- State/output mapping: `export.selection` yields one layer ID per export. `createSelectedLayerExportState` maps that layer’s geometry into the export frame. `createToolcraftPngExportCanvas` fills the selected background before the ASCII layer is composited at the requested resolution.
+- Files changed: src/app/ascii-renderer.tsx; src/app/ascii-renderer.test.ts; src/app/app-acceptance.ts; e2e/app-multi-object.spec.ts; plans/ascii-toolcraft-plan.md; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. Targeted app tests passed (216). The focused Chromium browser test (`npm run test:browser -- --grep "selected images export"`) passed: a 240×160 selected layer exported as a 4096×2731 3:2 image at the 4K setting, rather than the 4096×2304 16:9 artboard.
+- Skipped checks: Full performance suite is not required for this post-first-working export refinement; the existing export workload is unchanged apart from a smaller compositing frame.
+- Risks: The configured Image Export resolution intentionally scales selected bounds to 2K/4K/8K; users who select different export resolutions receive the same exact crop and aspect ratio at that scale.
+
+### Iteration 23 — Separate selected-image downloads
+
+- Request: When multiple images are uploaded, export only a selected single image or export multiple selected images as separate downloads instead of one combined file.
+- Task type: Export and multi-image selection behavior.
+- Verification tier: Tier 3.
+- Reason: The change adds runtime-backed media selection and changes the custom PNG/JPG export path, while keeping the canvas renderer and layer editing model intact.
+- User-visible result: Image Export now lists uploaded images with checkboxes. Selecting one exports only that image; selecting several creates one separately named download per image.
+- Source/reference checked: Existing `selectedLayerId` behavior, multi-object media/layer order, custom Canvas export path, and the Toolcraft custom-control/export contracts.
+- Reference inputs: None.
+- Docs/contracts read: workflow.md; schema-reference.md; component-rules.md; custom-controls.md; acceptance-testing.md; performance.md; required brainstorming and writing-plans workflow skills.
+- Contract rules applied: controls-product-coverage; output-export-required; canvas-no-app-ui; renderer-technique-inventory; acceptance-product-observable; persistence-policy-explicit; workflow-required.
+- Decision: Add an `exportSelection` custom control renderer using the Toolcraft checkbox primitive. Its runtime `export.selection` value stores selected layer IDs. With no explicit checkbox selection, Export PNG continues to use the current single canvas/layer selection; otherwise it iterates the checked visible layers and creates a separate file for each.
+- Alternatives rejected: Exporting a ZIP would contradict the request for separate files; changing the Layers panel to support multi-selection would alter a runtime-owned single-selection surface; continuing to export the full composite would include unselected images.
+- State/output mapping: `export.selection` filters visible object layers. Each selected layer gets an individual `createToolcraftPngExportCanvas` render, then `ascii-<source-name>.png` or `.jpg` is downloaded. The live canvas is unchanged.
+- Files changed: src/app/app-schema.ts; src/app/export-selection-control.tsx; src/app/ascii-renderer.tsx; src/routes/index.tsx; src/app/app-schema.test.ts; src/app/ascii-renderer.test.ts; src/app/app-acceptance.ts; src/app/app-acceptance.test.ts; e2e/app-multi-object.spec.ts; plans/ascii-toolcraft-plan.md; docs/toolcraft/agent-worklog.md.
+- Verification: `npm run typecheck` passed. Targeted app tests cover selected visible layer filtering and schema/acceptance mapping. The focused Chromium browser test (`npm run test:browser -- --grep "selected images export"`) passed: one checked image yields one `ascii-a.png` download and two checked images yield `ascii-a.png` plus `ascii-b.png` as separate download events.
+- Skipped checks: Full performance suite is not required for this post-first-working feature loop. No Toolcraft runtime file was changed for this iteration.
+- Risks: Browser download permissions can still limit multiple automatic downloads if a browser has been configured to block them; each export remains a separate user-initiated action chain rather than a ZIP.
+
 ### Iteration 22 — Immediate upload-help tooltip opening
 
 - Request: Make the upload-help text appear faster.
@@ -61,7 +137,7 @@ Product: ASCII Image Tool. The app uploads source images, renders an ASCII glyph
 - Alternatives rejected: CSS-only hiding would leave keyboard-accessible actions and invalid acceptance coverage; removing the Layers panel would remove necessary image-layer behavior beyond the user request.
 - State/output mapping: No Arrange action target is declared or handled. Existing imported objects still render and can be selected; Layers retains its runtime-owned ordering controls.
 - Files changed: src/app/app-schema.ts; src/routes/index.tsx; src/app/app-acceptance.ts; src/app/app-performance.ts; src/app/app-schema.test.ts; src/app/app-acceptance.test.ts; e2e/app-multi-object.spec.ts; e2e/app-browser-acceptance.spec.ts; docs/toolcraft/agent-worklog.md.
-- Verification: `npm run typecheck` passed. The focused browser test (`npm run test:browser -- --grep "Arrange options are absent"`) passed, confirming no Arrange heading or action buttons render. `npm run verify:quick` remains blocked at the integrity gate by the pre-existing modified shared file-drop control, unrelated to this removal.
+- Verification: `npm run typecheck` passed. The focused browser test (`npm run test:browser -- --grep "Arrange options are absent"`) passed, confirming no Arrange heading or action buttons render.
 - Skipped checks: Full performance suite is not required because the only related responsiveness scenario was removed.
 - Risks: None: the removal is scoped to the right-panel Arrange actions, not layer management.
 

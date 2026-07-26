@@ -370,6 +370,47 @@ export const appProductReadiness: ToolcraftProductReadiness = {
 export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
   {
     automated: true,
+    automatedTestName: "acceptance: shift-click layer rows creates a multi-image export selection",
+    browser: true,
+    browserTestName: "browser: shift-click layer rows creates a multi-image export selection",
+    componentType: "canvasHandle",
+    evidence: "command-side-effect",
+    expectedObservable:
+      "Clicking one layer then Shift-clicking another writes both visible layer IDs to export.selection, shows the multi-selection outline, and checks both Images export options.",
+    fixture: "two uploaded image objects",
+    id: "canvas.exportSelection",
+    kind: "control",
+    target: "export.selection",
+    userAction:
+      "Click one image layer row, then Shift-click another; verify both image export checkboxes are selected and Export PNG downloads each separately.",
+  },
+  {
+    automated: true,
+    automatedTestName: "acceptance: selected images export as separate downloads",
+    browser: true,
+    browserTestName: "browser: selected images export as separate downloads",
+    builtInFitCheck: {
+      checkedBuiltIns: ["fileDrop", "checkbox", "collectionActions", "actions"],
+      closestBuiltIn: "checkbox",
+      whyInsufficient:
+        "Checkbox can represent one static value, while this control must derive a changing list of uploaded runtime layers and persist a multi-layer export selection without owning media import, removal, or ordering.",
+      productObservable:
+        "Checking one uploaded image exports only that layer's bounds with the configured background; checking several produces one separately named ASCII file for each selected image.",
+    },
+    componentType: "exportSelection",
+    customControlCoverage: ["built-in-gap", "kit-primitives", "minimal-ui", "product-output", "runtime-state"],
+    evidence: "exported-bytes",
+    expectedObservable:
+      "The Images export selector shows each uploaded image, persists its checked layer IDs in runtime state, and Export PNG creates one separately named file per checked image using that image's bounds rather than the artboard.",
+    fixture: "two uploaded image objects",
+    id: "export.selection",
+    kind: "control",
+    target: "export.selection",
+    userAction:
+      "Check one uploaded image and click Export PNG to receive an ASCII file cropped to that image's bounds with the configured background; check two images and receive two separate downloads.",
+  },
+  {
+    automated: true,
     automatedTestName: "acceptance: source image upload drives ASCII output",
     browser: true,
     browserTestName: "browser: source image upload drives ASCII output",

@@ -6,9 +6,10 @@ import { Toaster } from "sonner";
 
 import {
   AsciiImageRenderer,
-  exportAsciiImage,
+  exportAsciiImages,
 } from "../app/ascii-renderer";
 import { appSchema } from "../app/app-schema";
+import { ExportSelectionControl } from "../app/export-selection-control";
 
 const pngExportContractEvidence =
   "createToolcraftPngExportCanvas({ includeBackground: export.includeBackground, resolution: export.image.resolution })";
@@ -19,8 +20,7 @@ const handlePanelAction: ToolcraftPanelActionHandler = async ({ action, reportPr
   }
 
   void pngExportContractEvidence;
-  reportProgress(0.15);
-  await exportAsciiImage(state);
+  await exportAsciiImages(state, reportProgress);
   reportProgress(1);
 };
 
@@ -49,6 +49,7 @@ export function AppHome(): React.JSX.Element {
           <ToolcraftApp
             canvasContent={<AsciiImageRenderer />}
             className="h-dvh min-h-dvh"
+            controlRenderers={{ exportSelection: ExportSelectionControl }}
             onPanelAction={handlePanelAction}
             renderDefaultCanvasMedia={false}
             schema={appSchema}

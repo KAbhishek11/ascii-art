@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { appPerformance } from "../src/app/app-performance";
@@ -134,6 +136,51 @@ test.describe("multi-object canvas", () => {
       await page.getByRole("button", { name: /export png/i }).click();
       await page.waitForTimeout(300);
     });
+  });
+
+  test("browser: selected images export as separate downloads", async ({ page }) => {
+    await uploadTwoObjects(page);
+    const selection = page.getByTestId("export-selection");
+    await expect(selection.getByRole("checkbox")).toHaveCount(2);
+
+    await selection.getByRole("button", { name: "Select all images for export" }).click();
+    await expect(selection.getByRole("checkbox", { name: "a.png" })).toBeChecked();
+    await expect(selection.getByRole("checkbox", { name: "b.png" })).toBeChecked();
+    await selection.getByRole("checkbox", { name: "b.png" }).uncheck();
+    const oneDownload = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export PNG" }).click();
+    const firstDownload = await oneDownload;
+    expect(firstDownload.suggestedFilename()).toBe("ascii-a.png");
+    const exportBytes = await readFile((await firstDownload.path())!);
+    const dimensions = await page.evaluate(async (rawBytes) => {
+      const bitmap = await createImageBitmap(new Blob([new Uint8Array(rawBytes)], { type: "image/png" }));
+      return { height: bitmap.height, width: bitmap.width };
+    }, [...exportBytes]);
+    expect(dimensions).toEqual({ height: 2731, width: 4096 });
+
+    await selection.getByRole("checkbox", { name: "b.png" }).check();
+    const names: string[] = [];
+    const collectDownload = (download: import("@playwright/test").Download) => {
+      names.push(download.suggestedFilename());
+    };
+    page.on("download", collectDownload);
+    await page.getByRole("button", { name: "Export PNG" }).click();
+    await expect.poll(() => names.length).toBe(2);
+    page.off("download", collectDownload);
+    names.sort();
+    expect(names).toEqual(["ascii-a.png", "ascii-b.png"]);
+  });
+
+  test("browser: shift-click layer rows creates a multi-image export selection", async ({ page }) => {
+    await uploadTwoObjects(page);
+    const layers = page.locator("[data-layer-id]");
+    await layers.first().click();
+    await layers.nth(1).click({ modifiers: ["Shift"] });
+
+    const selection = page.getByTestId("export-selection");
+    await expect(selection.getByRole("checkbox", { name: "a.png" })).toBeChecked();
+    await expect(selection.getByRole("checkbox", { name: "b.png" })).toBeChecked();
+    await expect(page.locator("[data-export-selected]")).toHaveCount(1);
   });
 
   test("browser: canvas accepts up to five image objects", async ({ page }) => {
